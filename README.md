@@ -103,6 +103,12 @@ Invoke-WebRequest -Uri http://127.0.0.1:8000/api/predict -Method Post -InFile pa
 ## Метрики
 - На валидации считаются accuracy, precision, recall, f1 для каждой головы, а также среднее.
 
+### Оценка и матрицы ошибок
+```
+python scripts/evaluate.py --val-csv data/splits/val.csv --ckpt checkpoints/resnet18_multitask.pt --out-dir eval
+```
+Сохранит `eval/cm_clean.png` и `eval/cm_damaged.png`.
+
 ## Ограничения и этика
 - Конфиденциальность: избегайте распознаваемых лиц/номеров; храните данные безопасно.
 - Bias: разные камеры/условия освещения могут влиять; используйте аугментации и баланс классов.
@@ -113,3 +119,25 @@ Invoke-WebRequest -Uri http://127.0.0.1:8000/api/predict -Method Post -InFile pa
 - Многоклассовая градация грязи/повреждений
 - Детекция/сегментация для локализации повреждений
 - Калибровка вероятностей и активное обучение
+
+## Конвертер Roboflow → labels.csv
+Ожидаем структуру папок: `root/clean`, `root/dirty`, `root/damaged`, `root/intact`.
+```
+python scripts/roboflow_to_labels.py --root path/to/root --out data/labels.csv
+python scripts/prepare_split.py --labels data/labels.csv --val-size 0.2
+```
+
+## Batch-инференс на папке
+```
+python scripts/batch_predict.py --ckpt checkpoints/resnet18_multitask.pt --folder path/to/folder --out predictions.csv
+```
+
+## Docker
+Собрать образ и запустить сайт:
+```
+docker build -t car-condition .
+docker run --rm -p 8000:8000 -e CKPT=checkpoints/resnet18_multitask.pt car-condition
+```
+
+## CI
+Добавлен GitHub Actions `ci.yml`: установка зависимостей, синтетический датасет, обучение 1 эпоху, предсказание одного изображения.
