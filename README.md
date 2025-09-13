@@ -94,6 +94,8 @@ python -m src.web.main --ckpt checkpoints/resnet18_multitask.pt --host 127.0.0.1
 ```
 Откройте: http://127.0.0.1:8000 — статическая страница отправляет файл на /api/predict.
 
+Поддерживается мультизагрузка через `/api/batch_predict` (поле формы `files`). Встроенная страница поддерживает выбор нескольких файлов и выводит список результатов.
+
 Пример REST-запроса (PowerShell):
 ```
 # Отправка изображения
@@ -108,6 +110,19 @@ Invoke-WebRequest -Uri http://127.0.0.1:8000/api/predict -Method Post -InFile pa
 python scripts/evaluate.py --val-csv data/splits/val.csv --ckpt checkpoints/resnet18_multitask.pt --out-dir eval
 ```
 Сохранит `eval/cm_clean.png` и `eval/cm_damaged.png`.
+
+Пример результатов (на синтетике): Macro F1 ≈ 1.0
+
+![Confusion Matrix Clean](eval/cm_clean.png)
+
+![Confusion Matrix Damaged](eval/cm_damaged.png)
+
+Дополнительно сохраняются ROC/PR кривые:
+
+![ROC Clean](eval/clean_roc.png)
+![PR Clean](eval/clean_pr.png)
+![ROC Damaged](eval/damaged_roc.png)
+![PR Damaged](eval/damaged_pr.png)
 
 ## Ограничения и этика
 - Конфиденциальность: избегайте распознаваемых лиц/номеров; храните данные безопасно.
@@ -141,3 +156,27 @@ docker run --rm -p 8000:8000 -e CKPT=checkpoints/resnet18_multitask.pt car-condi
 
 ## CI
 Добавлен GitHub Actions `ci.yml`: установка зависимостей, синтетический датасет, обучение 1 эпоху, предсказание одного изображения.
+
+## Экспорт модели (ONNX / TorchScript)
+```
+python -m scripts.export_model --ckpt checkpoints/resnet18_multitask.pt --out-dir checkpoints/export --opset 12
+```
+Получите `checkpoints/export/model_ts.pt` (TorchScript) и `checkpoints/export/model.onnx`. Если установлен onnxruntime, будет выполнена минимальная проверка инференса.
+
+## Smoke E2E (данные → train → predict)
+```
+python -m scripts.smoke_e2e
+```
+Скрипт генерирует синтетику, делит на сплиты, обучает 1 эпоху и делает предсказание для одного изображения.
+
+## Grad-CAM визуализация
+```
+python -m scripts.grad_cam --ckpt checkpoints/resnet18_multitask.pt --image path/to/car.jpg --out eval/gradcam.png --head damaged
+```
+Сохраняет тепловую карту важности признаков поверх изображения.
+
+## Быстрый запуск (PowerShell)
+```
+./run_gradio.ps1 -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 7860
+./run_web.ps1    -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 8000
+```

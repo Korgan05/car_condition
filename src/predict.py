@@ -21,14 +21,14 @@ def load_image(path: str, size: int = 224):
     return t(img).unsqueeze(0)
 
 
-def soft_labels(pc: float, pd: float):
+def soft_labels(pc: float, pd: float, thr_c: float = 0.5, thr_d: float = 0.5):
     return {
         'clean_prob': pc,
         'dirty_prob': 1 - pc,
         'intact_prob': 1 - pd,
-        'damaged_prob': pd,
-        'pred_clean': 'clean' if pc >= 0.5 else 'dirty',
-        'pred_damage': 'damaged' if pd >= 0.5 else 'intact',
+    'damaged_prob': pd,
+    'pred_clean': 'clean' if pc >= thr_c else 'dirty',
+    'pred_damage': 'damaged' if pd >= thr_d else 'intact',
     }
 
 
@@ -39,11 +39,12 @@ class PredictConfig:
     folder: Optional[str] = None
     image_size: int = 224
     device: str = 'cuda' if torch.cuda.is_available() else 'cpu'
+    backbone: str = 'resnet18'
 
 
-def predict_one(ckpt: str, image_path: str, image_size: int, device: str):
-    model = MultiHeadResNet(pretrained=False)
+def predict_one(ckpt: str, image_path: str, image_size: int, device: str, backbone: str):
     state = torch.load(ckpt, map_location=device)
+    model = MultiHeadResNet(pretrained=False, backbone=backbone)
     model.load_state_dict(state['model'])
     model.to(device).eval()
     x = load_image(image_path, size=image_size).to(device)
@@ -51,7 +52,9 @@ def predict_one(ckpt: str, image_path: str, image_size: int, device: str):
         pc, pd = model.predict_proba(x)
         pc = pc.item()
         pd = pd.item()
-    return soft_labels(pc, pd)
+    thr_c = state.get('thresholds', {}).get('clean', 0.5)
+    thr_d = state.get('thresholds', {}).get('damaged', 0.5)
+    return soft_labels(pc, pd, thr_c, thr_d)
 
 
 def main(cfg: PredictConfig):
@@ -66,7 +69,7 @@ def main(cfg: PredictConfig):
         raise SystemExit("Укажите --image или --folder")
 
     for p in paths:
-        res = predict_one(cfg.ckpt, p, cfg.image_size, cfg.device)
+        res = predict_one(cfg.ckpt, p, cfg.image_size, cfg.device, cfg.backbone)
         print(p, res)
 
 

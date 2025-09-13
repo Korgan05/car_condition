@@ -1,13 +1,22 @@
 filepath,clean,damaged
-data\raw\dummy_024.png,0,1
-data\raw\dummy_059.png,0,1
-data\raw\dummy_005.png,0,1
-data\raw\dummy_022.png,0,0
-data\raw\dummy_002.png,0,1
-data\raw\dummy_029.png,1,0
-data\raw\dummy_000.png,1,1
-data\raw\dummy_053.png,1,0
-data\raw\dummy_016.png,1,1
-data\raw\dummy_045.png,1,0
-data\raw\dummy_044.png,0,0
-data\raw\dummy_030.png,0,0
+Rust and Scrach.v1i.yolov8/valid/images/f40e045bd47d_jpg.rf.dfd56461c663d625ff6e84d2e4251b9d.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/92def1es-1920_jpg.rf.b39a11e71d1a169c46753dc66a75e190.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900-20-_jpg.rf.32fbf25aef3c2a75937ab4f1b9a10848.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900-1-_jpg.rf.ddb9fd9644f8ea36beb8142c3fd066f1.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900-15-_jpg.rf.005b8465e063dd0b1ef60ca06639a2af.jpg,1,0
+Rust and Scrach.v1i.yolov8/valid/images/a26946beaf3973c94fd4413f9c8291ff_jpeg.rf.82dbeb263c013c414ef941433db18242.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/scale_1200_jpeg.rf.069877ac15e13407923bcba880cce911.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/mGLIbRvb_jpg.rf.0560c25e26afcf9f05c291f40d50de99.jpg,1,0
+Rust and Scrach.v1i.yolov8/test/images/vmaitina_0_jpg.rf.cb29d22ddced5a007f07ae7219582b29.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/5842feb81ca01636e8a3a843db5e81c1_jpeg.rf.6c1a62ba8b1b17208ffee68e2da87bea.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/b0ccd52c7c31866767ef42783b923a39_jpeg.rf.19f86cce7c6209d078b5746204ff2419.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/382dd8be1fb0ec3460e1_jpg.rf.083533efc75c5f3d8ccee9ae198f99dc.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/2773635206_2f2c812a69_k_jpg.rf.297ef451413f52e4eec803c729f458c9.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900-16-_jpg.rf.a0a45d8e86dc9062218df55364817926.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/7eaff08s-960_jpg.rf.f55ad53a80df676bd40cba5e348acf8e.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/czarapina-na-mashine-do-metalla_jpg.rf.437199eea525c00e820807744dafec7b.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900n-1-_jpg.rf.3af0c89515c53e186a837ce5b0056330.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900_jpg.rf.52382e814f8c555cdc479863d6aab180.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/63035s3_jpg.rf.0994170e41d5623c0c74bc7f69eb75de.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900-11-_jpg.rf.bf44567631e492d5bce4e9b3479af6f2.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/original_jpg.rf.d0db6e95f24e4506db838a7a1ef3ea40.jpg,0,1

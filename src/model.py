@@ -2,7 +2,25 @@ from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import resnet18, ResNet18_Weights
+from torchvision.models import resnet18, resnet34, resnet50, ResNet18_Weights, ResNet34_Weights, ResNet50_Weights
+
+
+def _make_backbone(name: str, pretrained: bool):
+    name = name.lower()
+    if name == 'resnet18':
+        weights = ResNet18_Weights.DEFAULT if pretrained else None
+        m = resnet18(weights=weights)
+    elif name == 'resnet34':
+        weights = ResNet34_Weights.DEFAULT if pretrained else None
+        m = resnet34(weights=weights)
+    elif name == 'resnet50':
+        weights = ResNet50_Weights.DEFAULT if pretrained else None
+        m = resnet50(weights=weights)
+    else:
+        raise ValueError(f'Unknown backbone: {name}')
+    feat_dim = m.fc.in_features
+    m.fc = nn.Identity()
+    return m, feat_dim
 
 
 class MultiHeadResNet(nn.Module):
@@ -11,12 +29,9 @@ class MultiHeadResNet(nn.Module):
     Heads: две бинарные головы для (clean, damaged)
     Выход: logits_clean [B,1], logits_damaged [B,1]
     """
-    def __init__(self, pretrained: bool = True, freeze_backbone: bool = False):
+    def __init__(self, pretrained: bool = True, freeze_backbone: bool = False, backbone: str = 'resnet18'):
         super().__init__()
-        weights = ResNet18_Weights.DEFAULT if pretrained else None
-        self.backbone = resnet18(weights=weights)
-        feat_dim = self.backbone.fc.in_features
-        self.backbone.fc = nn.Identity()
+        self.backbone, feat_dim = _make_backbone(backbone, pretrained)
 
         self.head_clean = nn.Linear(feat_dim, 1)
         self.head_damaged = nn.Linear(feat_dim, 1)

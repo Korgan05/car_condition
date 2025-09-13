@@ -77,6 +77,6 @@ class CarConditionDataset(Dataset):
         return os.path.abspath(os.path.join(os.getcwd(), p))
 
 
-def make_loader(csv_path: str, cfg: Optional[DataConfig], batch_size: int, shuffle: bool) -> DataLoader:
+def make_loader(csv_path: str, cfg: Optional[DataConfig], batch_size: int, shuffle: bool, workers: int = 2, pin_memory: bool = True) -> DataLoader:
     ds = CarConditionDataset(csv_path, cfg)
-    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=2, pin_memory=True)
+    return DataLoader(ds, batch_size=batch_size, shuffle=shuffle, num_workers=workers, pin_memory=pin_memory)

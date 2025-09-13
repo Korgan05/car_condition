@@ -1,49 +1,82 @@
 filepath,clean,damaged
-data\raw\dummy_004.png,1,0
-data\raw\dummy_011.png,1,0
-data\raw\dummy_003.png,0,0
-data\raw\dummy_028.png,1,1
-data\raw\dummy_010.png,1,1
-data\raw\dummy_056.png,1,0
-data\raw\dummy_050.png,0,1
-data\raw\dummy_025.png,1,1
-data\raw\dummy_037.png,0,0
-data\raw\dummy_041.png,0,0
-data\raw\dummy_033.png,0,1
-data\raw\dummy_035.png,1,0
-data\raw\dummy_055.png,0,0
-data\raw\dummy_038.png,1,0
-data\raw\dummy_012.png,0,1
-data\raw\dummy_027.png,0,0
-data\raw\dummy_046.png,0,1
-data\raw\dummy_018.png,1,0
-data\raw\dummy_049.png,0,1
-data\raw\dummy_021.png,1,0
-data\raw\dummy_001.png,0,1
-data\raw\dummy_014.png,0,1
-data\raw\dummy_058.png,1,0
-data\raw\dummy_040.png,1,1
-data\raw\dummy_057.png,0,1
-data\raw\dummy_031.png,0,1
-data\raw\dummy_042.png,1,0
-data\raw\dummy_013.png,1,1
-data\raw\dummy_026.png,0,0
-data\raw\dummy_020.png,1,0
-data\raw\dummy_048.png,0,1
-data\raw\dummy_034.png,0,1
-data\raw\dummy_006.png,0,1
-data\raw\dummy_019.png,1,0
-data\raw\dummy_036.png,1,0
-data\raw\dummy_039.png,0,0
-data\raw\dummy_052.png,1,1
-data\raw\dummy_054.png,0,0
-data\raw\dummy_017.png,1,0
-data\raw\dummy_032.png,0,1
-data\raw\dummy_015.png,0,1
-data\raw\dummy_023.png,1,0
-data\raw\dummy_008.png,0,0
-data\raw\dummy_051.png,1,1
-data\raw\dummy_009.png,0,0
-data\raw\dummy_007.png,1,0
-data\raw\dummy_043.png,0,1
-data\raw\dummy_047.png,0,0
+Rust and Scrach.v1i.yolov8/train/images/1660845274_14-sportishka-com-p-rizhiki-na-avto-krasivo-foto-28_jpg.rf.1677acf707e3b3b686ca8900dda8ee56.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/9b43a613014321d59c520513309891b0_jpeg.rf.9e021cc59adefa904c7da9e77f52c012.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/1200x900-7-_jpg.rf.6189ed09c87a05b251724028aa9a0ffe.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/fotogal-11_jpg.rf.43a4f3901945efa5fd88128aa7e07b98.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900-10-_jpg.rf.4a1de843b81cd25563d8bf2eab4ba126.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/755959414531144_jpg.rf.1a8274ab4279eaea95d3e2c4dc77384c.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/Check-Cars-for-Accident-Damage-Step-8_jpg.rf.413539d42f2073f26101a5d7d17e6b59.jpg,0,1
+Rust and Scrach.v1i.yolov8/test/images/1200x900n-3-_jpg.rf.d951666694a9eaed01fd9420eb01b26d.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/274668081_4131f8788f61508b905dbb1f23e441e4_800_jpg.rf.009501182ff0afabfcf3be8bfee5b8c6.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/avto-u7_jpg.rf.f1ece3125654b637919dc48888415ab6.jpg,1,0
+Rust and Scrach.v1i.yolov8/test/images/PIC_01231-1024x768-1024x768_jpg.rf.8a49a684dcb622e88e9b1b134823f8b3.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/scale_1200-3-_jpeg.rf.b2f4f0c409ce995d0621a524e89dc4ce.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900n-2-_jpg.rf.c2ad7e7764a6650e40ad19630c39c0d5.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900-3-_jpg.rf.983c47b436b36c63e685cc8e5fb90292.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/scale_1200-1-_jpeg.rf.0334a37b05ab1212118f2a8e40b0b1c0.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/358eb578eec76deeb6218fd589fb3d8f_jpeg.rf.1da1eaf4cd9387feaa40acec755da71a.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/xGHIvh5E_jpg.rf.07582020e25bf2628b02fe541e4455b6.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/H4AAAgCcn-A-1920_jpg.rf.f1ff8a32735076e0f4ba12a5128975cc.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/18222042_1467f016bd486f88cf972840eebc3311_jpg.rf.1f15e15f62d7a494c6fe7af9e9ec9fc3.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/01d9edbaafadf98722d310f086fd5b80_jpg.rf.f35a5326f6fbab81696d9a0946d294a1.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900n_jpg.rf.faf8d12011c935792a1d371931f78599.jpg,1,0
+Rust and Scrach.v1i.yolov8/valid/images/udalenie-vmyatin-bez-pokraski-52_jpg.rf.31fbff1b69cb5ca9ea85a09d55976b43.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/teen-car-insurance-rates_jpg.rf.50163d35f1feb14d1b45dc0087917905.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/chernaya-mashina-czarapina_jpg.rf.b8d83aff488623f48116a0a024905001.jpg,0,1
+Rust and Scrach.v1i.yolov8/test/images/mbe250_01_jpg.rf.dce209b3c086a199a63a042107bafba3.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1660855254_8-sportishka-com-p-skoli-na-avto-krasivo-foto-12_jpg.rf.3c18e1beea90fbe7097369f9303cfd00.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1417945171_1_jpg.rf.7bb6e2d8a5d77f832e268738ba0b4921.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/scale_1200-2-_jpeg.rf.d4882b0b497d3fbfe59e22c378d9f6a0.jpg,0,1
+Rust and Scrach.v1i.yolov8/test/images/46db3a029388e6708ce9d945d96f06e1_jpg.rf.7eeabb0f4dcdf4ed0799390d896db93d.jpg,1,0
+Rust and Scrach.v1i.yolov8/valid/images/66e8e1beec593e243887b42ce3b6c4a4_jpg.rf.b8ec80bd4bc6f8e918046990f9f0c6bc.jpg,1,0
+Rust and Scrach.v1i.yolov8/test/images/1200x900-24-_jpg.rf.d220e1cb8695f1fe0f28d884ed45fa50.jpg,1,0
+Rust and Scrach.v1i.yolov8/valid/images/1200x900-14-_jpg.rf.1eba5562e7d9320302a153f3b7d73145.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/36ce2f6s-1920_jpg.rf.f567150567a2ec6eb790becbc008332a.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/1f824dabff20_jpg.rf.faf95c80a3d0706e9ac2713f270ed2e3.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/ez7jpoOX_jpg.rf.d4c5cc7ee7a6bca9e18faa32ad7ec383.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/e0402ecs-960_jpg.rf.2738aa69753ea02b65b5f48c05d64f28.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/1200x900-2-_jpg.rf.6bc588f827fd08048724043d6410af58.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/k1ZVkcHN_jpg.rf.f6b0b2c4fc1e17a3549d2f9506ea29c3.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/k3yiW5Ox_jpg.rf.6cb0b3c459375132e87fe827639838f5.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/694559b58832b8c2b1cb1caf8f881f4d_jpeg.rf.abc905b84e17aab81fc9860d9c226aef.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/f4eb6ads-1920_jpg.rf.ef76e03f53fd35e8dd395d011051a506.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/0c265959a64be5b9dc10106830be0351_jpeg.rf.7697b0ffe34e1cc22e662227d87f67b5.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/2833569863_jpg.rf.2c299a87e73d859198079e6458ff10a7.jpg,1,0
+Rust and Scrach.v1i.yolov8/valid/images/1cf0568s-960_jpg.rf.442e52ebcdb05f92aef25df16eb88da2.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/c39efac2164d4fa911266edb8ce83672_jpeg.rf.373da3cc0699c1810df371218ec53188.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/528b6e71348a20364752d2cc213d101d_jpg.rf.8c09fe262c9dc7c16380b9d769e8772a.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/1200x900-8-_jpg.rf.a5afad12968ad2bea5d89140ba5de1ef.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/N95jKzaA1Zs_jpg.rf.c800a826f03d39322a6def3663378df3.jpg,0,1
+Rust and Scrach.v1i.yolov8/test/images/1200x900-17-_jpg.rf.fdc85da04eceb3df3c7006a2bb8b57fb.jpg,1,0
+Rust and Scrach.v1i.yolov8/test/images/1_jpg.rf.f1fa16a856a268804de0c0017a064683.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900-6-_jpg.rf.4769675f86236627f17608dc45de7617.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900-5-_jpg.rf.7768d98a7042bbcbd50bb714105c479e.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/iStock-174860744_jpg.rf.2cbaf869877748f33b54c12adb6b58f4.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1636001579_35-krot-info-p-potsarapannii-bok-mashini-mashini-krasivo-36_jpg.rf.7a2479769d009b7de41bff1487724930.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/IMG5027_jpg.rf.30c09179c79131a8e785570a0012fff8.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900-9-_jpg.rf.43acf485159c903a326c81b0b9b7a063.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/1200x900-22-_jpg.rf.c25aa8106b325e53efb351b4fef3417c.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/07555a580f25e8d70ae0b9e1b1bbcd4e_jpg.rf.ab3c73839a2d4d67fb214c9928cd4908.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/1200x900-13-_jpg.rf.007419f11472b79350d3210fbb5401f8.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/66f3e9349be182e38f9146e0b1f9ce2a_jpeg.rf.600f694308ec0de11d8fd785ff2792b0.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/822aeacf5c83f2301e915d29737012da_jpeg.rf.32064c076d5a2c92103bd916a6fd52a0.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/DEgAAgDZS-A-1920_jpg.rf.5068d99397355c04d67cfa48cf1d3074.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1463046273170590084_jpg.rf.4599932b5e143981be3ba9d6e3b81a55.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900_png.rf.3a5879382294c379a3bdf1e4c8a44f42.jpg,1,0
+Rust and Scrach.v1i.yolov8/valid/images/e67f708736394b6abbc8febad93f80a2_jpg.rf.719a87a82170bd52b643a8c15544296c.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/1200x900-12-_jpg.rf.c624819fd11d86244a9ab67eb6301683.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/img-20130618-wa0000_jpg.rf.4379480e57d58d75d905ada4dcbe5190.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/byAAAgGbFuA-1920_jpg.rf.3fa0eb2c2d92d431b8f41172da629d68.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/xsnIkPBY_jpg.rf.a51cc9b024c4ec94db354b3d640c044b.jpg,1,0
+Rust and Scrach.v1i.yolov8/test/images/1539868278119653349_jpg.rf.f6d8c4e2fe560b351a1cf4dfd2159b7f.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/95dd926s-1920_jpg.rf.6d1ac4fc015251f18843da3ae13debc7.jpg,0,1
+Rust and Scrach.v1i.yolov8/test/images/1200x900-18-_jpg.rf.c4bc098955081c954f7e94390fb9a9fd.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/image_12_02_15_12_05_2_jpeg.rf.d7904fe3126d00ed6e540b17edbfad00.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/CMmr-R5T4Qv_clTRinNsds2U0w4-480_jpg.rf.4235435cbe484fb2da61615c70f50aa4.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/vorovskogo_2_jpg.rf.05b46460b213e8e003d6761ef4205cab.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/629368414aa5851974b9d1f6fded3b2b_jpg.rf.0fbe43c1c2ddb367f9eb673cbd4825c4.jpg,0,1
+Rust and Scrach.v1i.yolov8/train/images/car-door-with-rust-and-metal-corrosion-need-repairs-royalty-free-image-1599591692_jpg.rf.7a16ae52fbed14d3b1b0d7ee3dd1d2eb.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/1200x900-25-_jpg.rf.917f4b75facc9d410e376d53d8e2f106.jpg,1,0
+Rust and Scrach.v1i.yolov8/train/images/481ad765e60d63cad245b1006c7a8f20_jpeg.rf.71700df7aa68ece3602d0d12a2860cd4.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/245bcc6s-1920_jpg.rf.37a47153f13a5dff4e8ceeead53a0f2e.jpg,0,1
+Rust and Scrach.v1i.yolov8/valid/images/sN2IFdl4_jpg.rf.136d577c289292b8b8910a12b51a3c62.jpg,1,0

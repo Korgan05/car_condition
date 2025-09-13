@@ -17,3 +17,8 @@ logs/
 wandb/
 .DS_Store
 Thumbs.db
+# Roboflow dataset dumps and YOLO runs
+Rust and Scrach.v1i.yolov8/
+yolov8_runs/
+# Local server artifacts
+uvicorn.log
