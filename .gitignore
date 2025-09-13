@@ -6,6 +6,11 @@ __pycache__/
 *.pth
 *.ckpt
 checkpoints/
+data/raw/
+eval/
+predictions.csv
+.pytest_cache/
+*.log
 .env
 .venv
 logs/
