@@ -18,6 +18,10 @@
     .result { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; background: #0a0f2b; border: 1px solid #272f5d; border-radius: 8px; padding: 12px; white-space: pre-wrap; }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #1f2a5a; border: 1px solid #2f3a7a; }
+    .badge.ok { background: #103c2b; border-color: #1f6d4b; }
+    .badge.bad { background: #3c1010; border-color: #6d1f1f; }
+    .file { font-weight: 600; margin-bottom: 6px; color: #c9d4ff; }
+    .line { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
   </style>
 </head>
 <body>
@@ -56,7 +60,6 @@
         <div style="height: 12px;"></div>
   <div id="labels" class="grid"></div>
         <div style="height: 12px;"></div>
-        <div id="json" class="result"></div>
       </div>
     </div>
   </main>
@@ -84,7 +87,7 @@
     }).catch(()=>{});
     thrClean.addEventListener('input', ()=> thrCleanVal.textContent = (+thrClean.value).toFixed(2));
     thrDamaged.addEventListener('input', ()=> thrDamagedVal.textContent = (+thrDamaged.value).toFixed(2));
-    const json = document.getElementById('json');
+    // убрали тех. JSON — оставляем только человеко-понятные подписи
 
     input.addEventListener('change', () => {
       preview.innerHTML = '';
@@ -108,32 +111,53 @@
         [...input.files].forEach(f => fd.append('files', f));
   const resp = await fetch('/api/batch_predict', { method: 'POST', body: fd });
         if (!resp.ok) throw new Error(await resp.text());
-        const data = await resp.json();
-        json.textContent = JSON.stringify(data, null, 2);
+  const data = await resp.json();
 
   labels.innerHTML = '';
         if (data?.results?.length) {
           data.results.forEach(item => {
-            const box = document.createElement('div');
-            box.className = 'badge';
+            const wrap = document.createElement('div');
+            wrap.className = 'line';
             if (item.error) {
-              box.textContent = `❌ ${item.filename || ''}: ${item.error}`;
-            } else {
-              // По умолчанию используем решения сервера (с его порогами из чекпойнта)
-              let cleanLabel = item.pred_clean_ru || (item.pred_clean === 'clean' ? 'чистый' : 'грязный');
-              let damageLabel = item.pred_damage_ru || (item.pred_damage === 'damaged' ? 'битый' : 'целый');
-              // Если пользователь хочет поиграться с порогами — пересчитаем локально
-              if (document.querySelector('details')?.open) {
-                const pc = invClean.checked ? 1 - item.clean_prob : item.clean_prob;
-                const pd = invDamaged.checked ? 1 - item.damaged_prob : item.damaged_prob;
-                cleanLabel = pc >= +thrClean.value ? 'чистый' : 'грязный';
-                damageLabel = pd >= +thrDamaged.value ? 'битый' : 'целый';
-              }
-              const pcShow = Math.round((item.clean_prob ?? 0)*100);
-              const pdShow = Math.round((item.damaged_prob ?? 0)*100);
-              box.textContent = `${item.filename || ''} | ${cleanLabel} ${pcShow}% · ${damageLabel} ${pdShow}%`;
+              const err = document.createElement('div');
+              err.className = 'badge bad';
+              err.textContent = `❌ ${item.filename || ''}: ${item.error}`;
+              wrap.appendChild(err);
+              labels.appendChild(wrap);
+              return;
             }
-            labels.appendChild(box);
+
+            // Базируемся на решениях сервера (его пороги из чекпойнта)
+            let cleanLabel = item.pred_clean_ru || (item.pred_clean === 'clean' ? 'чистый' : 'грязный');
+            let damageLabel = item.pred_damage_ru || (item.pred_damage === 'damaged' ? 'битый' : 'целый');
+            // Если открыты ручные пороги — пересчитываем локально
+            if (document.querySelector('details')?.open) {
+              const pc = invClean.checked ? 1 - item.clean_prob : item.clean_prob;
+              const pd = invDamaged.checked ? 1 - item.damaged_prob : item.damaged_prob;
+              cleanLabel = pc >= +thrClean.value ? 'чистый' : 'грязный';
+              damageLabel = pd >= +thrDamaged.value ? 'битый' : 'целый';
+            }
+
+            const title = document.createElement('div');
+            title.className = 'file';
+            title.textContent = item.filename || '';
+            labels.appendChild(title);
+
+            const dirtBadge = document.createElement('span');
+            const dmgBadge = document.createElement('span');
+
+            // Вердикты в явном виде
+            const dirtIsClean = (cleanLabel === 'чистый');
+            dirtBadge.className = 'badge ' + (dirtIsClean ? 'ok' : 'bad');
+            dirtBadge.textContent = dirtIsClean ? 'Грязь: нет' : 'Грязь: есть';
+
+            const dmgIsDamaged = (damageLabel === 'битый');
+            dmgBadge.className = 'badge ' + (dmgIsDamaged ? 'bad' : 'ok');
+            dmgBadge.textContent = dmgIsDamaged ? 'Повреждения: есть' : 'Повреждения: нет';
+
+            wrap.appendChild(dirtBadge);
+            wrap.appendChild(dmgBadge);
+            labels.appendChild(wrap);
           });
         }
 
