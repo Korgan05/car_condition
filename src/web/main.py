@@ -468,34 +468,171 @@ def make_app(
             raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь(и) к YOLO весам при запуске.')
         data = await file.read()
         img = Image.open(io.BytesIO(data)).convert('RGB')
+        img_np = np.array(img)
+
+        # 1) Выбираем модель, у которой есть класс 'car' (авто) — приоритет весам с "car"/"dent" в названии
+        car_model = None
+        car_model_idx = -1
+        for i_m, m in enumerate(yolo_models):
+            try:
+                names = getattr(m.model, 'names', {}) if hasattr(m.model, 'names') else {}
+                has_car = False
+                for i_n in range(len(names)):
+                    if _friendly_class(names[i_n]) == 'авто':
+                        has_car = True
+                        break
+                if not has_car:
+                    continue
+                # предпочитаем веса, в названии которых есть 'car' или 'dent'
+                is_preferred = False
+                try:
+                    wbase = os.path.basename(yolo_weights_list[i_m]).lower()
+                    if ('car' in wbase) or ('dent' in wbase):
+                        is_preferred = True
+                except Exception:
+                    pass
+                if car_model is None or is_preferred:
+                    car_model = m
+                    car_model_idx = i_m
+            except Exception:
+                continue
+
+        def _run_yolo(mdl, image, conf_val: float):
+            try:
+                return mdl.predict(image, conf=conf_val, iou=iou, verbose=False, augment=True)
+            except Exception:
+                return None
 
         dets: list[dict] = []
-        # run all models and merge detections
-        for m in yolo_models:
-            dets_m: list[dict] = []
-            try:
-                results = m.predict(img, conf=conf, iou=iou, verbose=False, augment=True)
-            except Exception:
-                results = None
-            if results:
-                r = results[0]
+
+        # 2) Если нашли модель с классом авто — сначала ищем автомобили
+        car_boxes: list[tuple[list[float], float]] = []  # ([x1,y1,x2,y2], score)
+        if car_model is not None:
+            conf_car = max(0.15, float(conf))
+            res = _run_yolo(car_model, img, conf_car)
+            if res:
+                r = res[0]
                 boxes = getattr(r, 'boxes', None)
+                names = getattr(r, 'names', {}) if hasattr(r, 'names') and isinstance(r.names, dict) else {}
                 if boxes is not None:
-                    for i in range(len(boxes)):
-                        b = boxes[i]
-                        xyxy = b.xyxy[0].tolist()
+                    for i_b in range(len(boxes)):
+                        b = boxes[i_b]
                         cls_id = int(b.cls.item())
-                        score = float(b.conf.item())
-                        raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
-                        dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
-            # retry with lower conf per-model if this model returned nothing
-            if not dets_m and (conf is None or conf > 0.02):
-                try:
-                    results = m.predict(img, conf=0.02, iou=iou, verbose=False, augment=True)
-                except Exception:
-                    results = None
-                if results:
-                    r = results[0]
+                        raw_name = names.get(cls_id) if isinstance(names, dict) else None
+                        if _friendly_class(raw_name) == 'авто':
+                            xyxy = b.xyxy[0].tolist()
+                            score = float(b.conf.item())
+                            car_boxes.append(([float(v) for v in xyxy], score))
+            # если машин нет — пробуем пониже порог
+            if not car_boxes and conf_car > 0.05:
+                res = _run_yolo(car_model, img, 0.05)
+                if res:
+                    r = res[0]
+                    boxes = getattr(r, 'boxes', None)
+                    names = getattr(r, 'names', {}) if hasattr(r, 'names') and isinstance(r.names, dict) else {}
+                    if boxes is not None:
+                        for i_b in range(len(boxes)):
+                            b = boxes[i_b]
+                            cls_id = int(b.cls.item())
+                            raw_name = names.get(cls_id) if isinstance(names, dict) else None
+                            if _friendly_class(raw_name) == 'авто':
+                                xyxy = b.xyxy[0].tolist()
+                                score = float(b.conf.item())
+                                car_boxes.append(([float(v) for v in xyxy], score))
+
+        def _clip(v, lo, hi):
+            return max(lo, min(hi, v))
+
+        # 3) Если машины найдены — детектим дефекты внутри каждой ROI, иначе — глобальная детекция как раньше
+        if car_boxes:
+            # добавим боксы машины тоже в выдачу
+            for (cb, sc) in car_boxes:
+                dets.append({'box': cb, 'class_id': -1, 'class': 'авто', 'score': float(sc)})
+            H, W = img_np.shape[:2]
+            for (cb, _) in car_boxes:
+                x1, y1, x2, y2 = [int(v) for v in cb]
+                # паддинг 5% от размера бокса
+                pad = int(0.05 * max(x2 - x1, y2 - y1))
+                xx1 = _clip(x1 - pad, 0, W - 1)
+                yy1 = _clip(y1 - pad, 0, H - 1)
+                xx2 = _clip(x2 + pad, 0, W - 1)
+                yy2 = _clip(y2 + pad, 0, H - 1)
+                if xx2 <= xx1 or yy2 <= yy1:
+                    continue
+                crop_np = img_np[yy1:yy2, xx1:xx2]
+                crop_img = Image.fromarray(crop_np)
+
+                roi_dets: list[dict] = []
+                # запускаем все модели и собираем дефекты, исключая класс авто
+                for m in yolo_models:
+                    res = _run_yolo(m, crop_img, float(conf))
+                    if not res:
+                        # пробуем понизить конф, если пусто
+                        if conf > 0.02:
+                            res = _run_yolo(m, crop_img, 0.02)
+                    if not res:
+                        continue
+                    r = res[0]
+                    boxes = getattr(r, 'boxes', None)
+                    names = getattr(r, 'names', {}) if hasattr(r, 'names') and isinstance(r.names, dict) else {}
+                    if boxes is not None:
+                        for i_b in range(len(boxes)):
+                            b = boxes[i_b]
+                            cls_id = int(b.cls.item())
+                            raw_name = names.get(cls_id) if isinstance(names, dict) else None
+                            friendly = _friendly_class(raw_name)
+                            if friendly == 'авто':
+                                continue
+                            xyxy = b.xyxy[0].tolist()
+                            gx1 = float(xyxy[0]) + xx1
+                            gy1 = float(xyxy[1]) + yy1
+                            gx2 = float(xyxy[2]) + xx1
+                            gy2 = float(xyxy[3]) + yy1
+                            score = float(b.conf.item())
+                            roi_dets.append({'box': [gx1, gy1, gx2, gy2], 'class_id': cls_id, 'class': friendly, 'score': score})
+
+                # Доп. попытка найти ржавчину: низкий conf только для ржавчины
+                def _is_rust_label(lbl: Optional[str]) -> bool:
+                    return (_friendly_class(lbl) == 'ржавчина') if lbl else False
+                if not any((d.get('class') == 'ржавчина') for d in roi_dets):
+                    for m in yolo_models:
+                        res = _run_yolo(m, crop_img, 0.01)
+                        if not res:
+                            continue
+                        r = res[0]
+                        boxes = getattr(r, 'boxes', None)
+                        names = getattr(r, 'names', {}) if hasattr(r, 'names') and isinstance(r.names, dict) else {}
+                        if boxes is not None:
+                            for i_b in range(len(boxes)):
+                                b = boxes[i_b]
+                                cls_id = int(b.cls.item())
+                                raw_name = names.get(cls_id) if isinstance(names, dict) else None
+                                if _is_rust_label(raw_name):
+                                    xyxy = b.xyxy[0].tolist()
+                                    gx1 = float(xyxy[0]) + xx1
+                                    gy1 = float(xyxy[1]) + yy1
+                                    gx2 = float(xyxy[2]) + xx1
+                                    gy2 = float(xyxy[3]) + yy1
+                                    score = float(b.conf.item())
+                                    roi_dets.append({'box': [gx1, gy1, gx2, gy2], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
+                # Цветовой фолбэк по ржавчине в ROI
+                if not any((d.get('class') == 'ржавчина') for d in roi_dets):
+                    rust_boxes = _rust_color_boxes(crop_np)
+                    for b in rust_boxes:
+                        gx1 = float(b[0]) + xx1
+                        gy1 = float(b[1]) + yy1
+                        gx2 = float(b[2]) + xx1
+                        gy2 = float(b[3]) + yy1
+                        roi_dets.append({'box': [gx1, gy1, gx2, gy2], 'class_id': -1, 'class': 'ржавчина', 'score': 0.25})
+
+                dets.extend(roi_dets)
+        else:
+            # fallback: глобальная детекция (как раньше)
+            for m in yolo_models:
+                dets_m: list[dict] = []
+                res = _run_yolo(m, img, float(conf))
+                if res:
+                    r = res[0]
                     boxes = getattr(r, 'boxes', None)
                     if boxes is not None:
                         for i in range(len(boxes)):
@@ -505,38 +642,46 @@ def make_app(
                             score = float(b.conf.item())
                             raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
                             dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
-            dets.extend(dets_m)
-
-        # if no rust found at all, try extra ultra-low-conf pass for rust only
-        def _is_rust_label(lbl: Optional[str]) -> bool:
-            return (_friendly_class(lbl) == 'ржавчина') if lbl else False
-
-        if not any((d.get('class') == 'ржавчина') for d in dets):
-            for m in yolo_models:
-                try:
-                    results = m.predict(img, conf=0.01, iou=iou, verbose=False, augment=True)
-                except Exception:
-                    results = None
-                if results:
-                    r = results[0]
-                    boxes = getattr(r, 'boxes', None)
-                    names = getattr(r, 'names', {}) if hasattr(r, 'names') and isinstance(r.names, dict) else {}
-                    if boxes is not None:
-                        for i in range(len(boxes)):
-                            b = boxes[i]
-                            cls_id = int(b.cls.item())
-                            raw_name = names.get(cls_id) if isinstance(names, dict) else None
-                            if _is_rust_label(raw_name):
+                if not dets_m and (conf is None or conf > 0.02):
+                    res = _run_yolo(m, img, 0.02)
+                    if res:
+                        r = res[0]
+                        boxes = getattr(r, 'boxes', None)
+                        if boxes is not None:
+                            for i in range(len(boxes)):
+                                b = boxes[i]
                                 xyxy = b.xyxy[0].tolist()
+                                cls_id = int(b.cls.item())
                                 score = float(b.conf.item())
-                                dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
-        if not any((d.get('class') == 'ржавчина') for d in dets):
-            img_np = np.array(img)
-            rust_boxes = _rust_color_boxes(img_np)
-            for b in rust_boxes:
-                dets.append({'box': [float(v) for v in b], 'class_id': -1, 'class': 'ржавчина', 'score': 0.25})
+                                raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
+                                dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+                dets.extend(dets_m)
 
-        # simple per-class NMS to reduce duplicates across models
+            # добивка ржавчины глобально
+            def _is_rust_label(lbl: Optional[str]) -> bool:
+                return (_friendly_class(lbl) == 'ржавчина') if lbl else False
+            if not any((d.get('class') == 'ржавчина') for d in dets):
+                for m in yolo_models:
+                    res = _run_yolo(m, img, 0.01)
+                    if res:
+                        r = res[0]
+                        boxes = getattr(r, 'boxes', None)
+                        names = getattr(r, 'names', {}) if hasattr(r, 'names') and isinstance(r.names, dict) else {}
+                        if boxes is not None:
+                            for i in range(len(boxes)):
+                                b = boxes[i]
+                                cls_id = int(b.cls.item())
+                                raw_name = names.get(cls_id) if isinstance(names, dict) else None
+                                if _is_rust_label(raw_name):
+                                    xyxy = b.xyxy[0].tolist()
+                                    score = float(b.conf.item())
+                                    dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
+            if not any((d.get('class') == 'ржавчина') for d in dets):
+                rust_boxes = _rust_color_boxes(img_np)
+                for b in rust_boxes:
+                    dets.append({'box': [float(v) for v in b], 'class_id': -1, 'class': 'ржавчина', 'score': 0.25})
+
+        # NMS по классам
         def iou(a, b):
             ax1, ay1, ax2, ay2 = a
             bx1, by1, bx2, by2 = b
@@ -562,7 +707,7 @@ def make_app(
                     kept.append(d)
             nms_out.extend(kept)
 
-        # also return combined friendly classes
+        # Собираем список классов
         classes_out = None
         try:
             s = set()
