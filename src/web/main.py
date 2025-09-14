@@ -98,6 +98,20 @@ def make_app(
             yolo_model = None
             yolo_classes = None
 
+    def _friendly_class(name: Optional[str]) -> Optional[str]:
+        if name is None:
+            return None
+        name = name.lower()
+        mapping = {
+            'scracth': 'царапина',
+            'scratch': 'царапина',
+            'dunt': 'вмятина',
+            'dent': 'вмятина',
+            'rust': 'ржавчина',
+            'car': 'авто',
+        }
+        return mapping.get(name, name)
+
     @app.get('/api/metadata')
     def metadata():
         return {
@@ -266,7 +280,7 @@ def make_app(
         return await heatmap(head=head, file=file)
 
     @app.post('/api/detect')
-    async def detect(file: UploadFile = File(...), conf: float = 0.25, iou: float = 0.45):
+    async def detect(file: UploadFile = File(...), conf: float = 0.10, iou: float = 0.45):
         if yolo_model is None:
             raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь к YOLO весам при запуске.')
         data = await file.read()
@@ -282,14 +296,34 @@ def make_app(
                 xyxy = b.xyxy[0].tolist()
                 cls_id = int(b.cls.item())
                 score = float(b.conf.item())
-                dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': r.names.get(cls_id), 'score': score})
-        return JSONResponse({'detections': dets, 'classes': yolo_classes})
+                raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
+                dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+        # retry with lower conf if empty
+        if not dets and (conf is None or conf > 0.06):
+            results = yolo_model.predict(img, conf=0.05, iou=iou, verbose=False)
+            if results:
+                r = results[0]
+                boxes = r.boxes
+                for i in range(len(boxes)):
+                    b = boxes[i]
+                    xyxy = b.xyxy[0].tolist()
+                    cls_id = int(b.cls.item())
+                    score = float(b.conf.item())
+                    raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
+                    dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+        # also return friendly classes
+        classes_out = None
+        try:
+            classes_out = [_friendly_class(yolo_model.model.names[i]) for i in range(len(yolo_model.model.names))]
+        except Exception:
+            classes_out = yolo_classes
+        return JSONResponse({'detections': dets, 'classes': classes_out})
     @app.post('/api/detect/', include_in_schema=False)
     async def detect_slash(file: UploadFile = File(...), conf: float = 0.25, iou: float = 0.45):
         return await detect(file=file, conf=conf, iou=iou)
 
     @app.post('/api/detect_image')
-    async def detect_image(file: UploadFile = File(...), conf: float = 0.25, iou: float = 0.45):
+    async def detect_image(file: UploadFile = File(...), conf: float = 0.10, iou: float = 0.45):
         if yolo_model is None:
             raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь к YOLO весам при запуске.')
         data = await file.read()
@@ -298,8 +332,24 @@ def make_app(
         if not results:
             raise HTTPException(status_code=500, detail='YOLO inference failed')
         r = results[0]
-        # r.plot() -> ndarray BGR
-        plot_bgr = r.plot()
+        # if no boxes, retry with lower conf
+        try:
+            if r.boxes is not None and len(r.boxes) == 0 and (conf is None or conf > 0.06):
+                results = yolo_model.predict(img, conf=0.05, iou=iou, verbose=False)
+                r = results[0]
+        except Exception:
+            pass
+        # replace names to friendly RU labels for plotting
+        try:
+            if hasattr(r, 'names') and isinstance(r.names, dict):
+                r.names = {i: _friendly_class(r.names.get(i)) for i in r.names}
+        except Exception:
+            pass
+        # r.plot() -> ndarray BGR (увеличим толщину линий для наглядности)
+        try:
+            plot_bgr = r.plot(line_width=4)
+        except TypeError:
+            plot_bgr = r.plot()
         plot_rgb = cv2.cvtColor(plot_bgr, cv2.COLOR_BGR2RGB)
         buf = io.BytesIO()
         Image.fromarray(plot_rgb).save(buf, format='PNG')
