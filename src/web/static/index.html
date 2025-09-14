@@ -64,7 +64,8 @@
   const showDet = document.getElementById('showDet');
     // load metadata
     fetch('/api/metadata').then(r=>r.json()).then(m=>{
-      meta.textContent = `модель: ${m.backbone}`;
+      const yolo = m.yolo_loaded && m.yolo_weights ? ` | YOLO: ${m.yolo_weights}` : '';
+      meta.textContent = `модель: ${m.backbone}${yolo}`;
     }).catch(()=>{});
     // убрали тех. JSON — оставляем только человеко-понятные подписи
 
@@ -79,6 +80,12 @@
         img.dataset.idx = String(idx);
         img.src = URL.createObjectURL(f);
         preview.appendChild(img);
+        // контейнер для детекций и карт
+        const info = document.createElement('div');
+        info.className = 'result';
+        info.style.margin = '8px 0 12px 0';
+        info.id = `info-${idx}`;
+        preview.appendChild(info);
       });
     });
 
@@ -154,6 +161,11 @@
                 img.style.margin = '4px 0 12px 0';
                 img.alt = head === 'dirty' ? 'Теплокарта грязи' : 'Теплокарта повреждений';
                 img.src = url;
+                const cap = document.createElement('div');
+                cap.style.fontSize = '12px';
+                cap.style.color = '#8ea0d0';
+                cap.textContent = head === 'dirty' ? 'Теплокарта: Грязь' : 'Теплокарта: Повреждения';
+                preview.appendChild(cap);
                 preview.appendChild(img);
               } catch (e) {
                 console.warn('CAM error', head, e);
@@ -170,6 +182,7 @@
             const fd3 = new FormData();
             fd3.append('file', f);
             try {
+              // Annotated image
               const r3 = await fetch('/api/detect_image', { method: 'POST', body: fd3 });
               if (!r3.ok) throw new Error(await r3.text());
               const blob = await r3.blob();
@@ -179,9 +192,24 @@
               img.style.maxWidth = '100%';
               img.style.border = '1px solid #2f3a7a';
               img.style.borderRadius = '8px';
-              img.style.margin = '4px 0 12px 0';
+              img.style.margin = '4px 0 6px 0';
               img.src = url;
               preview.appendChild(img);
+
+              // Detection list (class + score)
+              const r4 = await fetch('/api/detect', { method: 'POST', body: fd3 });
+              if (r4.ok) {
+                const det = await r4.json();
+                const info = document.getElementById(`info-${i}`) || document.createElement('div');
+                info.className = info.className || 'result';
+                const lines = (det?.detections || []).map(d => {
+                  const cls = d.class || 'объект';
+                  const s = Math.round((d.score || 0) * 100);
+                  return `• ${cls} — ${s}%`;
+                });
+                info.textContent = lines.length ? lines.join('\n') : 'Объекты не найдены';
+                if (!info.id) { info.id = `info-${i}`; preview.appendChild(info); }
+              }
             } catch (e) {
               console.warn('Detect error', e);
             }

@@ -119,6 +119,7 @@ def make_app(
             'thresholds': {'clean': thr_c, 'damaged': thr_d},
             'yolo_loaded': bool(yolo_model is not None),
             'yolo_classes': yolo_classes,
+            'yolo_weights': os.path.basename(yolo_weights) if yolo_weights else None,
         }
 
     # Allow trailing slashes for endpoints (avoids 404 when client posts to /api/.../)
