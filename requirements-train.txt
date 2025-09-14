@@ -1,0 +1,5 @@
+# Extra dependencies for training, evaluation, and exports
+pandas>=2.2.0
+scikit-learn>=1.4.0
+matplotlib>=3.8.0
+onnxruntime>=1.18.0

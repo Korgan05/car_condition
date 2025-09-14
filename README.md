@@ -1,10 +1,10 @@
-# Car Condition: Веб-приложение с детекцией
+# Car Condition Demo (FastAPI + YOLOv8)
 
-Определение состояния авто по фото с классификацией (чистый/грязный, целый/повреждённый) и подсветкой проблем на изображении (YOLO: царапина, вмятина, ржавчина, грязь).
+Определение состояния авто по фото: чистый/грязный и битый/целый, с подсветкой дефектов (вмятины, царапины, ржавчина, грязь).
 
 ## Быстрый старт (Windows, PowerShell)
-- Требования: Python 3.10–3.11, Git. GPU не обязателен.
-- Клонируйте репозиторий и установите зависимости в виртуальное окружение:
+- Требования: Python 3.11, Git. GPU не обязателен.
+- Клонируйте репозиторий и установите зависимости:
 
 ```powershell
 git clone https://github.com/Korgan05/car_condition.git
@@ -15,61 +15,58 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-- Запуск веб-сервера (FastAPI) с детекцией YOLO и UI:
+- Запуск веб-сервера (FastAPI) с YOLO и UI:
 
 ```powershell
-# вариант 1: один вес (ржавчина/царапины)
-./run_web.ps1 -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 8088 -YoloWeights 'yolov8_runs\rust_scratch\weights\best.pt'
+# Вариант 1: CPU/.venv
+./run_web.ps1 -YoloWeights "yolov8_runs\rust_scratch_s960_e30_gpu_v2\weights\best.pt;yolov8_runs\car_dent_only_s960_e30_gpu_v2\weights\best.pt"
 
-# вариант 2: ансамбль двух весов (ржавчина+царапины, царапины+вмятины)
-./run_web.ps1 -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 8088 -YoloWeights 'yolov8_runs\rust_scratch\weights\best.pt,yolov8_runs\car_scratch_dent\weights\best.pt'
+# Вариант 2: GPU/.venv-gpu (скрипт сам выберет .venv-gpu при наличии)
+./run_web.ps1 -YoloWeights "yolov8_runs\rust_scratch_s960_e30_gpu_v2\weights\best.pt;yolov8_runs\car_dent_only_s960_e30_gpu_v2\weights\best.pt"
 ```
 
-- Откройте в браузере: `http://127.0.0.1:8088`
-  - Кнопка для загрузки фото; ползунок чувствительности (сдвиньте вниз до 0.01 для максимальной полноты по ржавчине).
-  - Цветные рамки: красный — ржавчина, синий — царапина, оранжевый — вмятина, коричневый — грязь.
-  - Если YOLO ничего не находит, включается тепловая карта/цветовой фолбэк.
+- Откройте: `http://127.0.0.1:8000`
+  - Если YOLO не загружается, смотрите `GET /api/metadata` (`yolo_loaded`, `yolo_candidates`, `yolo_error`).
 
-## Проверка API из PowerShell
+## API: проверка из PowerShell
 - Метаданные: модели/классы/пороговые значения
 
 ```powershell
-Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/api/metadata | Select-Object -ExpandProperty Content
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/api/metadata | Select-Object -ExpandProperty Content
 ```
 
 - Предсказание (классификация бинарная):
 
 ```powershell
-Invoke-WebRequest -Uri http://127.0.0.1:8088/api/predict -Method Post -InFile path\to\car.jpg -ContentType 'application/octet-stream' | Select-Object -ExpandProperty Content
+Invoke-WebRequest -Uri http://127.0.0.1:8000/api/predict -Method Post -InFile path\to\car.jpg -ContentType 'application/octet-stream' | Select-Object -ExpandProperty Content
 ```
 
 - Детекция (YOLO), параметр `conf` регулирует уверенность (0.01–0.5):
 
 ```powershell
 $img='path\to\car.jpg'
-Invoke-WebRequest -Uri "http://127.0.0.1:8088/api/detect?conf=0.05" -Method Post -InFile $img -ContentType 'application/octet-stream' | Select-Object -ExpandProperty Content
+Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/detect?conf=0.05" -Method Post -InFile $img -ContentType 'application/octet-stream' | Select-Object -ExpandProperty Content
 ```
 
 ## Где взять веса
-- В репозитории уже есть обученные веса YOLO (папка `yolov8_runs/*/weights/best.pt`). Этого достаточно для запуска.
-- Для дообучения/переобучения скачайте датасеты на Roboflow:
-  - Rust and Scrach.v1i.yolov8
-  - Car Scratch and Dent.v1i.yolov8
-  Сохраните в корень проекта одноимёнными папками (как в названии).
+- Веса YOLO и датасеты не хранятся в GitHub и игнорируются (`yolov8_runs/`, Roboflow-папки). Поместите свои `best.pt` в `yolov8_runs/*/weights/`.
+- Можно указать пути к весам через `-YoloWeights` или положить их в `yolov8_runs/*/weights/{best,last}.pt` для автопоиска.
 
 ## Обучение YOLO (опционально)
-Запустить обучение на CPU (для быстрого прогресса, рекомендуется больше эпох и GPU при наличии):
+Установите дополнительные пакеты:
 
 ```powershell
-Set-Location .\car_condition
-$env:ULTRALYTICS_SETTINGS = "$((Get-Location).Path)\ultralytics_settings.yaml"
-.\.venv\Scripts\python.exe -m scripts.train_yolo --data-yaml 'Car Scratch and Dent.v1i.yolov8/data.yaml' --model yolov8n.pt --imgsz 640 --epochs 10 --batch 4 --device cpu
+pip install -r requirements-train.txt
 ```
 
-Или напрямую через ultralytics:
+Запуск с ресюмом и ретраями:
 
 ```powershell
-.\.venv\Scripts\python.exe -c "from ultralytics import YOLO; m=YOLO('yolov8n.pt'); m.train(data='Rust and Scrach.v1i.yolov8/data.yaml', imgsz=640, epochs=10, batch=4, device='cpu', project='yolov8_runs', name='rust_scratch', pretrained=True, exist_ok=True)"
+# Вмятины
+.\.venv-gpu\Scripts\python.exe scripts\train_gpu.py --weights yolov8_runs/car_dent_only_s960_e60/weights/best.pt --data "Car_Dent_Only.v1i.yolov8/data.yaml" --project yolov8_runs --name car_dent_only_s960_e30_gpu_v2 --imgsz 960 --epochs 30 --batch 2 --device 0 --workers 2 --resume
+
+# Ржавчина/царапины/вмятины
+.\.venv-gpu\Scripts\python.exe scripts\train_gpu.py --weights yolov8_runs/rust_scratch_s960_e140_v3/weights/best.pt --data "Rust and Scrach.v1i.yolov8/data.yaml" --project yolov8_runs --name rust_scratch_s960_e30_gpu_v2 --imgsz 960 --epochs 30 --batch 2 --device 0 --workers 2 --resume
 ```
 
 ## Полезные параметры
@@ -98,8 +95,8 @@ car_condition/
   src/web/main.py           # FastAPI приложение + YOLO и Grad-CAM
   src/web/static/index.html # Веб-UI с отрисовкой боксов и теплокарт
   run_web.ps1               # Скрипт запуска веба на Windows
-  yolov8_runs/*/weights/    # Готовые веса YOLO (best.pt, last.pt)
-  checkpoints/*.pt          # Классификатор (мультитаск)
+  yolov8_runs/*/weights/    # Локальные веса YOLO (игнорируются гитом)
+  checkpoints/*.pt          # Классификатор (локально)
   requirements.txt          # Зависимости
 ```
 
