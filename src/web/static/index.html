@@ -143,9 +143,35 @@
         // Grad-CAM: строим две карты (грязь и повреждения)
         if (showCam.checked) {
           // Очистим прошлые карты
-          [...preview.querySelectorAll('img.cam')].forEach(n => n.remove());
+          [...preview.querySelectorAll('img.cam,canvas.cam')].forEach(n => n.remove());
           for (let i = 0; i < Math.min(input.files.length, 6); i++) {
             const f = input.files[i];
+            // Если далее будем рисовать боксы, заранее получим детекции (1 раз на файл)
+            let detections = [];
+            if (showDet.checked) {
+              try {
+                const fdDet = new FormData();
+                fdDet.append('file', f);
+                const rDet = await fetch('/api/detect', { method: 'POST', body: fdDet });
+                if (rDet.ok) {
+                  const detJson = await rDet.json();
+                  detections = detJson?.detections || [];
+                  // Обновим список детекций под исходным предпросмотром
+                  const info = document.getElementById(`info-${i}`) || document.createElement('div');
+                  info.className = info.className || 'result';
+                  const lines = detections.map(d => {
+                    const cls = d.class || 'объект';
+                    const s = Math.round((d.score || 0) * 100);
+                    return `• ${cls} — ${s}%`;
+                  });
+                  info.textContent = lines.length ? lines.join('\n') : 'Объекты не найдены';
+                  if (!info.id) { info.id = `info-${i}`; preview.appendChild(info); }
+                }
+              } catch (e) {
+                console.warn('Detect json error', e);
+              }
+            }
+
             for (const head of ['dirty','damaged']) {
               const fd2 = new FormData();
               fd2.append('file', f);
@@ -154,19 +180,56 @@
                 if (!r2.ok) throw new Error(await r2.text());
                 const blob = await r2.blob();
                 const url = URL.createObjectURL(blob);
-                const img = document.createElement('img');
-                img.className = 'cam';
-                img.style.maxWidth = '100%';
-                img.style.borderRadius = '8px';
-                img.style.margin = '4px 0 12px 0';
-                img.alt = head === 'dirty' ? 'Теплокарта грязи' : 'Теплокарта повреждений';
+
+                // Рендер в canvas, чтобы нарисовать поверх боксы
+                const img = new Image();
+                img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  canvas.className = 'cam';
+                  canvas.width = img.naturalWidth;
+                  canvas.height = img.naturalHeight;
+                  canvas.style.maxWidth = '100%';
+                  canvas.style.borderRadius = '8px';
+                  canvas.style.margin = '4px 0 12px 0';
+                  const ctx = canvas.getContext('2d');
+                  if (!ctx) return;
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+                  // Если нужно, поверх теплокарты рисуем детекции
+                  if (showDet.checked && detections.length) {
+                    ctx.lineWidth = Math.max(2, Math.round(Math.min(canvas.width, canvas.height) * 0.003));
+                    ctx.strokeStyle = '#ffd54a';
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.font = `${Math.max(12, Math.round(canvas.width * 0.018))}px system-ui, Arial`;
+                    ctx.textBaseline = 'top';
+                    detections.forEach(d => {
+                      const [x1, y1, x2, y2] = d.box || [];
+                      if ([x1,y1,x2,y2].some(v => typeof v !== 'number')) return;
+                      const w = x2 - x1, h = y2 - y1;
+                      // рамка
+                      ctx.strokeRect(x1, y1, w, h);
+                      // подпись
+                      const label = `${d.class || ''} ${(d.score!=null?Math.round(d.score*100):'') || ''}%`.trim();
+                      const tw = ctx.measureText(label).width;
+                      const th = Math.max(18, Math.round(canvas.width * 0.028));
+                      const bx = Math.max(0, x1);
+                      const by = Math.max(0, y1 - th);
+                      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                      ctx.fillRect(bx, by, tw + 8, th);
+                      ctx.fillStyle = '#ffd54a';
+                      ctx.fillText(label, bx + 4, by + 2);
+                      ctx.strokeStyle = '#ffd54a';
+                    });
+                  }
+
+                  const cap = document.createElement('div');
+                  cap.style.fontSize = '12px';
+                  cap.style.color = '#8ea0d0';
+                  cap.textContent = head === 'dirty' ? 'Теплокарта: Грязь (с боксами)' : 'Теплокарта: Повреждения (с боксами)';
+                  preview.appendChild(cap);
+                  preview.appendChild(canvas);
+                };
                 img.src = url;
-                const cap = document.createElement('div');
-                cap.style.fontSize = '12px';
-                cap.style.color = '#8ea0d0';
-                cap.textContent = head === 'dirty' ? 'Теплокарта: Грязь' : 'Теплокарта: Повреждения';
-                preview.appendChild(cap);
-                preview.appendChild(img);
               } catch (e) {
                 console.warn('CAM error', head, e);
               }
@@ -174,8 +237,8 @@
           }
         }
 
-        // YOLO детекция (аннотированная картинка)
-        if (showDet.checked) {
+        // YOLO детекция (аннотированная картинка), если теплокарты НЕ включены
+        if (showDet.checked && !showCam.checked) {
           [...preview.querySelectorAll('img.det')].forEach(n => n.remove());
           for (let i = 0; i < Math.min(input.files.length, 3); i++) {
             const f = input.files[i];
