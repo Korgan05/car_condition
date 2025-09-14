@@ -100,13 +100,14 @@ def make_app(
     yolo_weights_list: list[str] = []
     yolo_candidates_tried: list[str] = []
     yolo_error: Optional[str] = None
-    # Prepare candidate weights: CLI param or auto-discovery
+    # Prepare candidate weights: prefer explicit CLI param; fallback to auto-discovery
     def _discover_yolo_candidates() -> list[str]:
-        cands: list[str] = []
-        # explicit arg(s)
+        # if explicit weights passed, use ONLY them
         if yolo_weights:
-            cands.extend([w.strip() for w in re.split(r'[;,]', yolo_weights) if w.strip()])
-        # auto-discover common locations
+            return [w.strip() for w in re.split(r'[;,]', yolo_weights) if w.strip()]
+
+        # otherwise, auto-discover common locations
+        cands: list[str] = []
         root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         # yolov8_runs/*/weights/{best,last}.pt
         try:
@@ -145,7 +146,7 @@ def make_app(
         if not os.path.exists(w):
             print(f"[WARN] YOLO weights not found: {w}")
             continue
-        if 'YOLO' not in globals() or YOLO is None:  # type: ignore
+        if YOLO is None:  # type: ignore
             break
         try:
             m = YOLO(w)  # type: ignore
@@ -175,6 +176,16 @@ def make_app(
             'dent': 'вмятина',
             'dirt': 'грязь',
             'rust': 'ржавчина',
+            'rusty': 'ржавчина',
+            'corrosion': 'ржавчина',
+            'corroded': 'ржавчина',
+            'oxidation': 'ржавчина',
+            'oxide': 'ржавчина',
+            'stain': 'ржавчина',
+            'stains': 'ржавчина',
+            'mud': 'грязь',
+            'dust': 'грязь',
+            'dirty': 'грязь',
             'car': 'авто',
         }
         return mapping.get(name, name)
@@ -293,6 +304,42 @@ def make_app(
         try:
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        except Exception:
+            pass
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        boxes = []
+        min_area = int(min_area_ratio * w * h)
+        for c in cnts:
+            x, y, bw, bh = cv2.boundingRect(c)
+            if bw * bh < min_area:
+                continue
+            boxes.append([int(x), int(y), int(x + bw), int(y + bh)])
+        return boxes
+
+    def _rust_color_boxes(img_np: np.ndarray, min_area_ratio: float = 0.0012):
+        h, w = img_np.shape[:2]
+        hsv = cv2.cvtColor(img_np, cv2.COLOR_RGB2HSV)
+        lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+        # Маска 1: оранжево-коричневые оттенки
+        lower1 = np.array([5, 40, 25], dtype=np.uint8)
+        upper1 = np.array([30, 255, 255], dtype=np.uint8)
+        mask1 = cv2.inRange(hsv, lower1, upper1)
+        # Маска 2: тёмная ржавчина (низкая яркость/насыщенность)
+        lower2 = np.array([0, 20, 10], dtype=np.uint8)
+        upper2 = np.array([20, 200, 160], dtype=np.uint8)
+        mask2 = cv2.inRange(hsv, lower2, upper2)
+        mask = cv2.bitwise_or(mask1, mask2)
+        # Маска 3: по LAB (красно-жёлтые области)
+        a = lab[:, :, 1]
+        bch = lab[:, :, 2]
+        lab_comb = cv2.merge([a, bch, a])
+        mask3 = cv2.inRange(lab_comb, np.array([135, 135, 0], np.uint8), np.array([255, 255, 255], np.uint8))
+        mask = cv2.bitwise_or(mask, mask3)
+        try:
+            k1 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k1, iterations=2)
+            k2 = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k2, iterations=1)
         except Exception:
             pass
         cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -425,8 +472,9 @@ def make_app(
         dets: list[dict] = []
         # run all models and merge detections
         for m in yolo_models:
+            dets_m: list[dict] = []
             try:
-                results = m.predict(img, conf=conf, iou=iou, verbose=False)
+                results = m.predict(img, conf=conf, iou=iou, verbose=False, augment=True)
             except Exception:
                 results = None
             if results:
@@ -439,11 +487,11 @@ def make_app(
                         cls_id = int(b.cls.item())
                         score = float(b.conf.item())
                         raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
-                        dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
-            # retry with lower conf if empty
-            if not dets and (conf is None or conf > 0.035):
+                        dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+            # retry with lower conf per-model if this model returned nothing
+            if not dets_m and (conf is None or conf > 0.02):
                 try:
-                    results = m.predict(img, conf=0.03, iou=iou, verbose=False)
+                    results = m.predict(img, conf=0.02, iou=iou, verbose=False, augment=True)
                 except Exception:
                     results = None
                 if results:
@@ -456,7 +504,37 @@ def make_app(
                             cls_id = int(b.cls.item())
                             score = float(b.conf.item())
                             raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
-                            dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+                            dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+            dets.extend(dets_m)
+
+        # if no rust found at all, try extra ultra-low-conf pass for rust only
+        def _is_rust_label(lbl: Optional[str]) -> bool:
+            return (_friendly_class(lbl) == 'ржавчина') if lbl else False
+
+        if not any((d.get('class') == 'ржавчина') for d in dets):
+            for m in yolo_models:
+                try:
+                    results = m.predict(img, conf=0.01, iou=iou, verbose=False, augment=True)
+                except Exception:
+                    results = None
+                if results:
+                    r = results[0]
+                    boxes = getattr(r, 'boxes', None)
+                    names = getattr(r, 'names', {}) if hasattr(r, 'names') and isinstance(r.names, dict) else {}
+                    if boxes is not None:
+                        for i in range(len(boxes)):
+                            b = boxes[i]
+                            cls_id = int(b.cls.item())
+                            raw_name = names.get(cls_id) if isinstance(names, dict) else None
+                            if _is_rust_label(raw_name):
+                                xyxy = b.xyxy[0].tolist()
+                                score = float(b.conf.item())
+                                dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
+        if not any((d.get('class') == 'ржавчина') for d in dets):
+            img_np = np.array(img)
+            rust_boxes = _rust_color_boxes(img_np)
+            for b in rust_boxes:
+                dets.append({'box': [float(v) for v in b], 'class_id': -1, 'class': 'ржавчина', 'score': 0.25})
 
         # simple per-class NMS to reduce duplicates across models
         def iou(a, b):
@@ -510,14 +588,14 @@ def make_app(
         img = Image.open(io.BytesIO(data)).convert('RGB')
         # For visualization use the first model
         m0 = yolo_models[0]
-        results = m0.predict(img, conf=conf, iou=iou, verbose=False)
+        results = m0.predict(img, conf=conf, iou=iou, verbose=False, augment=True)
         if not results:
             raise HTTPException(status_code=500, detail='YOLO inference failed')
         r = results[0]
         # if no boxes, retry with lower conf
         try:
             if r.boxes is not None and len(r.boxes) == 0 and (conf is None or conf > 0.035):
-                results = m0.predict(img, conf=0.03, iou=iou, verbose=False)
+                results = m0.predict(img, conf=0.03, iou=iou, verbose=False, augment=True)
                 r = results[0]
         except Exception:
             pass

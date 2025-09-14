@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Car Condition</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <style>
     body { font-family: system-ui, Arial, sans-serif; background: #0b1020; color: #eaeef3; margin: 0; }
     header { padding: 16px 24px; background: #121833; font-weight: 600; }
@@ -22,6 +23,18 @@
     .badge.bad { background: #3c1010; border-color: #6d1f1f; }
     .file { font-weight: 600; margin-bottom: 6px; color: #c9d4ff; }
     .line { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+    .muted { color:#8ea0d0; font-size:12px; }
+    .legend { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+    .chip { padding:3px 8px; border-radius:999px; border:1px solid #2f3a7a; background:#0a0f2b; font-size:12px; }
+  .chip.green { border-color:#3a8a5a; color:#8ee9b0; }
+  .chip.yellow { border-color:#8a7a3a; color:#ffe08a; }
+  .chip.dirt { border-color:#3a8a5a; color:#8ee9b0; }
+  .chip.scratch { border-color:#8a7a3a; color:#ffe08a; }
+  .chip.dent { border-color:#6b4b2f; color:#ffb38a; }
+  .chip.rust { border-color:#7a2e2e; color:#f7a1a1; }
+  .chip.damage { border-color:#6a4cff; color:#c7b8ff; }
+    .conf-wrap { margin-top:10px; }
+    .conf-wrap input[type=range] { width: 100%; }
   </style>
 </head>
 <body>
@@ -35,18 +48,22 @@
         <div style="height: 12px;"></div>
   <button id="sendBtn">Отправить</button>
         <div style="height: 12px;"></div>
-        <label style="display:inline-flex; gap:8px; align-items:center;">
-          <input id="showCam" type="checkbox" /> Показать тепловые карты на фото (грязь и повреждения)
-        </label>
-        <div style="height: 12px;"></div>
-        <label style="display:inline-flex; gap:8px; align-items:center;">
-          <input id="showDet" type="checkbox" /> Детекция повреждений (YOLO) — отрисовать боксы
-        </label>
-        <div style="height: 12px;"></div>
+        <div class="conf-wrap">
+          <h2>Чувствительность детектора</h2>
+          <div class="muted">Если объектов мало — сдвиньте влево.</div>
+          <input id="confSlider" type="range" min="0.01" max="0.50" step="0.01" />
+          <div class="muted">Порог: <span id="confValue">0.05</span></div>
+        </div>
+        <div class="legend">
+          <span class="chip dirt">грязь — зелёный</span>
+          <span class="chip scratch">царапина — жёлтый</span>
+          <span class="chip dent">вмятина — оранжевый</span>
+          <span class="chip rust">ржавчина — красный</span>
+        </div>
       </div>
       <div class="card">
   <h1>Результаты</h1>
-        <div id="meta" style="margin-bottom:8px; color:#8ea0d0; font-size:12px;"></div>
+        <div id="meta" class="muted" style="margin-bottom:8px;"></div>
   <div id="preview"></div>
         <div style="height: 12px;"></div>
   <div id="labels" class="grid"></div>
@@ -60,14 +77,36 @@
     const preview = document.getElementById('preview');
   const labels = document.getElementById('labels');
   const meta = document.getElementById('meta');
-  const showCam = document.getElementById('showCam');
-  const showDet = document.getElementById('showDet');
+  const confSlider = document.getElementById('confSlider');
+  const confValue = document.getElementById('confValue');
+  const classify = []; // хранение вердиктов классификации по индексу файла
+  // детекция всегда отрисовывается
     // load metadata
     fetch('/api/metadata').then(r=>r.json()).then(m=>{
-      const yolo = m.yolo_loaded && m.yolo_weights ? ` | YOLO: ${m.yolo_weights}` : '';
-      meta.textContent = `модель: ${m.backbone}${yolo}`;
+      let parts = [];
+      parts.push(`модель: ${m.backbone}`);
+      if (m.yolo_loaded) {
+        parts.push(`YOLO: ${m.yolo_weights || 'загружен'}`);
+        if (m.yolo_classes?.length) parts.push(`классы: ${m.yolo_classes.join(', ')}`);
+      } else {
+        parts.push('YOLO: не загружен — боксы недоступны');
+      }
+      meta.textContent = parts.join(' | ');
     }).catch(()=>{});
     // убрали тех. JSON — оставляем только человеко-понятные подписи
+
+    // init detector sensitivity
+    const savedConf = parseFloat(localStorage.getItem('yoloConf') || '0.05');
+    const clamp = (v,min,max)=>Math.min(max,Math.max(min,v));
+  const confMin = 0.01, confMax = 0.50;
+    const state = { conf: clamp(savedConf, confMin, confMax) };
+    confSlider.value = String(state.conf);
+    confValue.textContent = state.conf.toFixed(2);
+    confSlider.addEventListener('input', () => {
+      state.conf = clamp(parseFloat(confSlider.value || '0.05'), confMin, confMax);
+      confValue.textContent = state.conf.toFixed(2);
+      localStorage.setItem('yoloConf', String(state.conf));
+    });
 
     input.addEventListener('change', () => {
       preview.innerHTML = '';
@@ -80,12 +119,6 @@
         img.dataset.idx = String(idx);
         img.src = URL.createObjectURL(f);
         preview.appendChild(img);
-        // контейнер для детекций и карт
-        const info = document.createElement('div');
-        info.className = 'result';
-        info.style.margin = '8px 0 12px 0';
-        info.id = `info-${idx}`;
-        preview.appendChild(info);
       });
     });
 
@@ -101,7 +134,7 @@
 
   labels.innerHTML = '';
         if (data?.results?.length) {
-          data.results.forEach(item => {
+          data.results.forEach((item, idx) => {
             const wrap = document.createElement('div');
             wrap.className = 'line';
             if (item.error) {
@@ -128,154 +161,171 @@
             // Вердикты в явном виде
             const dirtIsClean = (cleanLabel === 'чистый');
             dirtBadge.className = 'badge ' + (dirtIsClean ? 'ok' : 'bad');
-            dirtBadge.textContent = dirtIsClean ? 'Грязь: нет' : 'Грязь: есть';
+            dirtBadge.textContent = dirtIsClean ? `Грязь: нет (${Math.round(item.clean_prob*100)}%)` : `Грязь: есть (${Math.round((1-item.clean_prob)*100)}%)`;
 
             const dmgIsDamaged = (damageLabel === 'битый');
             dmgBadge.className = 'badge ' + (dmgIsDamaged ? 'bad' : 'ok');
-            dmgBadge.textContent = dmgIsDamaged ? 'Повреждения: есть' : 'Повреждения: нет';
+            dmgBadge.textContent = dmgIsDamaged ? `Повреждения: есть (${Math.round(item.damaged_prob*100)}%)` : `Повреждения: нет (${Math.round((1-item.damaged_prob)*100)}%)`;
 
             wrap.appendChild(dirtBadge);
             wrap.appendChild(dmgBadge);
             labels.appendChild(wrap);
+
+            // запомним вердикт классификации для последующей подсказки
+            classify[idx] = {
+              dirty: !dirtIsClean,
+              damaged: dmgIsDamaged,
+              cleanProb: item.clean_prob,
+              damagedProb: item.damaged_prob,
+            };
+
+            // Контейнер для сводки детекции заполним после детекта
+            const detLine = document.createElement('div');
+            detLine.className = 'line';
+            detLine.dataset.idx = String(idx);
+            detLine.innerHTML = '<span class="muted">Детектор (YOLO): загрузка…</span>';
+            labels.appendChild(detLine);
           });
         }
 
-        // Grad-CAM: строим две карты (грязь и повреждения)
-        if (showCam.checked) {
-          // Очистим прошлые карты
-          [...preview.querySelectorAll('img.cam,canvas.cam')].forEach(n => n.remove());
+        // Боксы на фото: повреждения (YOLO) + грязь (CAM) — единый canvas на изображение
+        {
+          [...preview.querySelectorAll('img.det,canvas.det')].forEach(n => n.remove());
           for (let i = 0; i < Math.min(input.files.length, 6); i++) {
             const f = input.files[i];
-            // Если далее будем рисовать боксы, заранее получим детекции (1 раз на файл)
-            let detections = [];
-            if (showDet.checked) {
+            const url = URL.createObjectURL(f);
+            const baseImg = new Image();
+            baseImg.onload = async () => {
               try {
-                const fdDet = new FormData();
-                fdDet.append('file', f);
-                const rDet = await fetch('/api/detect', { method: 'POST', body: fdDet });
-                if (rDet.ok) {
-                  const detJson = await rDet.json();
-                  detections = detJson?.detections || [];
-                  // Обновим список детекций под исходным предпросмотром
-                  const info = document.getElementById(`info-${i}`) || document.createElement('div');
-                  info.className = info.className || 'result';
-                  const lines = detections.map(d => {
-                    const cls = d.class || 'объект';
-                    const s = Math.round((d.score || 0) * 100);
-                    return `• ${cls} — ${s}%`;
-                  });
-                  info.textContent = lines.length ? lines.join('\n') : 'Объекты не найдены';
-                  if (!info.id) { info.id = `info-${i}`; preview.appendChild(info); }
-                }
-              } catch (e) {
-                console.warn('Detect json error', e);
-              }
-            }
+                const canvas = document.createElement('canvas');
+                canvas.className = 'det';
+                canvas.width = baseImg.naturalWidth;
+                canvas.height = baseImg.naturalHeight;
+                canvas.style.maxWidth = '100%';
+                canvas.style.border = '1px solid #2f3a7a';
+                canvas.style.borderRadius = '8px';
+                canvas.style.margin = '4px 0 6px 0';
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+                ctx.drawImage(baseImg, 0, 0, canvas.width, canvas.height);
 
-            for (const head of ['dirty','damaged']) {
-              const fd2 = new FormData();
-              fd2.append('file', f);
-              try {
-                const r2 = await fetch(`/api/heatmap?head=${head}`, { method: 'POST', body: fd2 });
-                if (!r2.ok) throw new Error(await r2.text());
-                const blob = await r2.blob();
-                const url = URL.createObjectURL(blob);
+                // Получаем YOLO-детекции
+                const fdFile = new FormData(); fdFile.append('file', f);
+                const rDet = await fetch(`/api/detect?conf=${encodeURIComponent(state.conf.toFixed(2))}`, { method: 'POST', body: fdFile });
+                const detJson = rDet.ok ? await rDet.json() : { detections: [] };
+                // фильтруем только интересующие классы
+                const wanted = new Set(['царапина','ржавчина','вмятина','грязь']);
+                let detections = (detJson?.detections || []).filter(d => wanted.has((d.class||'').toLowerCase()));
 
-                // Рендер в canvas, чтобы нарисовать поверх боксы
-                const img = new Image();
-                img.onload = () => {
-                  const canvas = document.createElement('canvas');
-                  canvas.className = 'cam';
-                  canvas.width = img.naturalWidth;
-                  canvas.height = img.naturalHeight;
-                  canvas.style.maxWidth = '100%';
-                  canvas.style.borderRadius = '8px';
-                  canvas.style.margin = '4px 0 12px 0';
-                  const ctx = canvas.getContext('2d');
-                  if (!ctx) return;
-                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-                  // Если нужно, поверх теплокарты рисуем детекции
-                  if (showDet.checked && detections.length) {
-                    ctx.lineWidth = Math.max(2, Math.round(Math.min(canvas.width, canvas.height) * 0.003));
-                    ctx.strokeStyle = '#ffd54a';
-                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-                    ctx.font = `${Math.max(12, Math.round(canvas.width * 0.018))}px system-ui, Arial`;
-                    ctx.textBaseline = 'top';
-                    detections.forEach(d => {
-                      const [x1, y1, x2, y2] = d.box || [];
-                      if ([x1,y1,x2,y2].some(v => typeof v !== 'number')) return;
-                      const w = x2 - x1, h = y2 - y1;
-                      // рамка
-                      ctx.strokeRect(x1, y1, w, h);
-                      // подпись
-                      const label = `${d.class || ''} ${(d.score!=null?Math.round(d.score*100):'') || ''}%`.trim();
-                      const tw = ctx.measureText(label).width;
-                      const th = Math.max(18, Math.round(canvas.width * 0.028));
-                      const bx = Math.max(0, x1);
-                      const by = Math.max(0, y1 - th);
-                      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-                      ctx.fillRect(bx, by, tw + 8, th);
-                      ctx.fillStyle = '#ffd54a';
-                      ctx.fillText(label, bx + 4, by + 2);
-                      ctx.strokeStyle = '#ffd54a';
-                    });
+                // Фолбэк: если YOLO не дал боксов, но классификатор видит проблему —
+                // запрашиваем CAM-боксы для соответствующей головы и добавляем их.
+                if ((!detections || detections.length === 0) && classify[i]) {
+                  const clsVerdict = classify[i];
+                  // полезная утилита
+                  const camFetch = async (head) => {
+                    const fdCam = new FormData(); fdCam.append('file', f);
+                    const rCam = await fetch(`/api/heatmap_boxes?head=${encodeURIComponent(head)}`, { method: 'POST', body: fdCam });
+                    if (!rCam.ok) return null;
+                    try { return await rCam.json(); } catch { return null; }
+                  };
+                  // damaged → "повреждение" (фиолетовый), dirty → "грязь" (зелёный)
+                  // можно вызывать обе, если обе задачи сработали
+                  const camBoxes = [];
+                  try {
+                    if (clsVerdict.damaged) {
+                      const r1 = await camFetch('damaged');
+                      if (r1?.boxes?.length) camBoxes.push({ label: r1.label || 'повреждение', boxes: r1.boxes });
+                    }
+                  } catch {}
+                  try {
+                    if (clsVerdict.dirty) {
+                      const r2 = await camFetch('dirty');
+                      if (r2?.boxes?.length) camBoxes.push({ label: r2.label || 'грязь', boxes: r2.boxes });
+                    }
+                  } catch {}
+                  if (camBoxes.length) {
+                    const camDet = [];
+                    for (const g of camBoxes) {
+                      for (const b of g.boxes) {
+                        if (Array.isArray(b) && b.length === 4) camDet.push({ box: b.map(Number), class: String(g.label||'') , score: 0.5 });
+                      }
+                    }
+                    detections = camDet; // заменяем пустые YOLO-детекции CAM-боксами
                   }
+                }
 
-                  const cap = document.createElement('div');
-                  cap.style.fontSize = '12px';
-                  cap.style.color = '#8ea0d0';
-                  cap.textContent = head === 'dirty' ? 'Теплокарта: Грязь (с боксами)' : 'Теплокарта: Повреждения (с боксами)';
-                  preview.appendChild(cap);
-                  preview.appendChild(canvas);
-                };
-                img.src = url;
+                // Рисуем YOLO-боксы: индивидуальные цвета по классам
+                if (detections.length) {
+                  ctx.lineWidth = Math.max(2, Math.round(Math.min(canvas.width, canvas.height) * 0.003));
+                  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                  ctx.font = `${Math.max(12, Math.round(canvas.width * 0.018))}px system-ui, Arial`;
+                  ctx.textBaseline = 'top';
+                  detections.forEach(d => {
+                    const [x1,y1,x2,y2] = d.box || [];
+                    if ([x1,y1,x2,y2].some(v => typeof v !== 'number')) return;
+                    const w = x2 - x1, h = y2 - y1;
+                    const cls = (d.class||'').toLowerCase();
+                    let color = '#ffd54a'; // default scratch/yellow
+                    if (cls === 'грязь') color = '#4ade80';       // green
+                    else if (cls === 'вмятина') color = '#ff9f50'; // orange
+                    else if (cls === 'ржавчина') color = '#ff6b6b'; // red
+                    else if (cls === 'повреждение') color = '#a78bfa'; // violet (CAM fallback)
+                    ctx.strokeStyle = color;
+                    ctx.strokeRect(x1, y1, w, h);
+                    const label = `${d.class || ''}`.trim();
+                    const tw = ctx.measureText(label).width;
+                    const th = Math.max(18, Math.round(canvas.width * 0.028));
+                    const bx = Math.max(0, x1);
+                    const by = Math.max(0, y1 - th);
+                    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                    ctx.fillRect(bx, by, tw + 8, th);
+                    ctx.fillStyle = color;
+                    ctx.fillText(label, bx + 4, by + 2);
+                  });
+                }
+
+                // Сводка по детекциям: подсчёт по классам
+                const counts = { 'грязь':0, 'царапина':0, 'вмятина':0, 'ржавчина':0, 'повреждение':0 };
+                for (const d of detections) {
+                  const cls = (d.class||'').toLowerCase();
+                  if (counts.hasOwnProperty(cls)) counts[cls]++;
+                }
+                const total = detections.length;
+                const detLine = [...labels.querySelectorAll('.line')].find(el => el.dataset?.idx === String(i));
+                if (detLine) {
+                  detLine.innerHTML = '';
+                  if (total === 0) {
+                    const chip = document.createElement('span'); chip.className = 'chip'; chip.textContent = 'Объекты детектора не найдены (YOLO)'; detLine.appendChild(chip);
+                    // если классификация говорит о наличии грязи/повреждений — подскажем, что это разные источники
+                    const cls = classify[i] || {};
+                    if (cls.dirty || cls.damaged) {
+                      const note = document.createElement('span');
+                      note.className = 'muted';
+                      note.style.marginLeft = '8px';
+                      note.textContent = 'Классификация видит проблему по фото целиком. Попробуйте снизить порог сверху или подключить веса с нужными классами.';
+                      detLine.appendChild(note);
+                    }
+                  } else {
+                    const totalChip = document.createElement('span'); totalChip.className = 'chip'; totalChip.textContent = `Найдено объектов: ${total}`; detLine.appendChild(totalChip);
+                    const makeChip = (text, cls) => { const c = document.createElement('span'); c.className = 'chip ' + (cls||''); c.textContent = text; return c; };
+                    if (counts['грязь']) detLine.appendChild(makeChip(`грязь: ${counts['грязь']}`, 'dirt'));
+                    if (counts['царапина']) detLine.appendChild(makeChip(`царапина: ${counts['царапина']}`, 'scratch'));
+                    if (counts['вмятина']) detLine.appendChild(makeChip(`вмятина: ${counts['вмятина']}`, 'dent'));
+                    if (counts['ржавчина']) detLine.appendChild(makeChip(`ржавчина: ${counts['ржавчина']}`, 'rust'));
+                    if (counts['повреждение']) detLine.appendChild(makeChip(`повреждение: ${counts['повреждение']}`, 'damage'));
+                  }
+                }
+
+                // Заменяем превью-изображение на canvas
+                const prevImg = preview.querySelector(`img[data-idx="${i}"]`);
+                if (prevImg) prevImg.replaceWith(canvas); else preview.appendChild(canvas);
               } catch (e) {
-                console.warn('CAM error', head, e);
+                console.warn('overlay error', e);
+              } finally {
+                URL.revokeObjectURL(url);
               }
-            }
-          }
-        }
-
-        // YOLO детекция (аннотированная картинка), если теплокарты НЕ включены
-        if (showDet.checked && !showCam.checked) {
-          [...preview.querySelectorAll('img.det')].forEach(n => n.remove());
-          for (let i = 0; i < Math.min(input.files.length, 3); i++) {
-            const f = input.files[i];
-            const fd3 = new FormData();
-            fd3.append('file', f);
-            try {
-              // Annotated image
-              const r3 = await fetch('/api/detect_image', { method: 'POST', body: fd3 });
-              if (!r3.ok) throw new Error(await r3.text());
-              const blob = await r3.blob();
-              const url = URL.createObjectURL(blob);
-              const img = document.createElement('img');
-              img.className = 'det';
-              img.style.maxWidth = '100%';
-              img.style.border = '1px solid #2f3a7a';
-              img.style.borderRadius = '8px';
-              img.style.margin = '4px 0 6px 0';
-              img.src = url;
-              preview.appendChild(img);
-
-              // Detection list (class + score)
-              const r4 = await fetch('/api/detect', { method: 'POST', body: fd3 });
-              if (r4.ok) {
-                const det = await r4.json();
-                const info = document.getElementById(`info-${i}`) || document.createElement('div');
-                info.className = info.className || 'result';
-                const lines = (det?.detections || []).map(d => {
-                  const cls = d.class || 'объект';
-                  const s = Math.round((d.score || 0) * 100);
-                  return `• ${cls} — ${s}%`;
-                });
-                info.textContent = lines.length ? lines.join('\n') : 'Объекты не найдены';
-                if (!info.id) { info.id = `info-${i}`; preview.appendChild(info); }
-              }
-            } catch (e) {
-              console.warn('Detect error', e);
-            }
+            };
+            baseImg.src = url;
           }
         }
       } catch (e) {

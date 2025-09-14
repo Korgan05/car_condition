@@ -2,7 +2,7 @@ param(
   [string]$Ckpt = "checkpoints/resnet18_multitask.pt",
   [int]$Port = 8000,
   [string]$BindHost = "127.0.0.1",
-  [string]$Backbone = "resnet18",
+  [string]$Backbone = "auto",
   [string]$YoloWeights = ""
 )
 

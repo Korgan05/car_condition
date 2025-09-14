@@ -1,182 +1,107 @@
-# Car Condition Classifier
+# Car Condition: Веб-приложение с детекцией
 
-Классификация состояния автомобиля по фото: чистота (clean/dirty) и целостность (damaged/intact).
+Определение состояния авто по фото с классификацией (чистый/грязный, целый/повреждённый) и подсветкой проблем на изображении (YOLO: царапина, вмятина, ржавчина, грязь).
 
-## Возможности
-- Двухголовая модель (мультиметка): clean vs dirty и damaged vs intact
-- Обучение на своих данных (CSV: filepath, clean, damaged)
-- Инференс по одному изображению и батчем
-- Демо UI (Gradio) для загрузки фото
-- Синтетический датасет для быстрых проверок
+## Быстрый старт (Windows, PowerShell)
+- Требования: Python 3.10–3.11, Git. GPU не обязателен.
+- Клонируйте репозиторий и установите зависимости в виртуальное окружение:
 
-## Структура
-```
-car_condition/
-  src/
-    data.py          # датасеты/трансформации/сплиты
-    model.py         # модель ResNet18 + две головы
-    train.py         # обучение/валидация/сохранение чекпойнта
-    predict.py       # инференс по изображению/папке
-    app.py           # демо UI на Gradio
-  scripts/
-    prepare_split.py       # формирование train/val из CSV с путями
-    create_dummy_dataset.py# синтетика для smoke-тестов
-  data/
-    raw/            # исходные данные (из Roboflow и др.)
-    labels.csv      # метки формата: filepath,clean,damaged
-    splits/         # train.csv, val.csv
-  checkpoints/      # сохранённые модели
-  tests/
-    smoke_test.py   # быстрый прогон на синтетике
-  requirements.txt
-  README.md
-  .gitignore
-```
-
-## Установка
-1) Создать и активировать виртуальное окружение (опционально).
-2) Установить зависимости:
-```
+```powershell
+git clone https://github.com/Korgan05/car_condition.git
+cd car_condition
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-PyTorch: выберите подходящую сборку под вашу систему/GPU с https://pytorch.org/get-started/locally/ при необходимости.
+- Запуск веб-сервера (FastAPI) с детекцией YOLO и UI:
 
-## Данные
-- Требуемый формат CSV: `data/labels.csv` с колонками:
-  - `filepath` — путь до изображения (от корня проекта или абсолютный)
-  - `clean` — 1 если чистый, 0 если грязный
-  - `damaged` — 1 если битый/повреждённый, 0 если целый
-- Разделение на сплиты:
-```
-python -m scripts.prepare_split --labels data/labels.csv --val-size 0.2
-```
-Создаст `data/splits/train.csv` и `data/splits/val.csv`.
+```powershell
+# вариант 1: один вес (ржавчина/царапины)
+./run_web.ps1 -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 8088 -YoloWeights 'yolov8_runs\rust_scratch\weights\best.pt'
 
-Источники данных (пример):
-- https://universe.roboflow.com/seva-at1qy/rust-and-scrach
-- https://universe.roboflow.com/carpro/car-scratch-and-dent
-- https://universe.roboflow.com/project-kmnth/car-scratch-xgxzs
-
-Примечание: соблюдайте лицензионные условия датасетов и избегайте сохранения госномеров.
-
-## Обучение
-```
-python -m src.train \
-  --train-csv data/splits/train.csv \
-  --val-csv data/splits/val.csv \
-  --epochs 10 \
-  --batch-size 16 \
-  --lr 3e-4 \
-  --out checkpoints/resnet18_multitask.pt
-```
-Аргументы смотрите `python -m src.train -h`.
-
-## Инференс
-```
-python -m src.predict --ckpt checkpoints/resnet18_multitask.pt --image path/to/car.jpg
-```
-Или на папке:
-```
-python -m src.predict --ckpt checkpoints/resnet18_multitask.pt --folder path/to/images
+# вариант 2: ансамбль двух весов (ржавчина+царапины, царапины+вмятины)
+./run_web.ps1 -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 8088 -YoloWeights 'yolov8_runs\rust_scratch\weights\best.pt,yolov8_runs\car_scratch_dent\weights\best.pt'
 ```
 
-## Демо UI
-```
-python -m src.app --ckpt checkpoints/resnet18_multitask.pt --server-port 7860
-```
-Откроется интерфейс в браузере.
+- Откройте в браузере: `http://127.0.0.1:8088`
+  - Кнопка для загрузки фото; ползунок чувствительности (сдвиньте вниз до 0.01 для максимальной полноты по ржавчине).
+  - Цветные рамки: красный — ржавчина, синий — царапина, оранжевый — вмятина, коричневый — грязь.
+  - Если YOLO ничего не находит, включается тепловая карта/цветовой фолбэк.
 
-## Веб-сайт (FastAPI)
-Поднимите сайт с формой загрузки и REST API:
-```
-python -m src.web.main --ckpt checkpoints/resnet18_multitask.pt --host 127.0.0.1 --port 8000
-```
-Откройте: http://127.0.0.1:8000 — статическая страница отправляет файл на /api/predict.
+## Проверка API из PowerShell
+- Метаданные: модели/классы/пороговые значения
 
-Поддерживается мультизагрузка через `/api/batch_predict` (поле формы `files`). Встроенная страница поддерживает выбор нескольких файлов и выводит список результатов.
-
-Пример REST-запроса (PowerShell):
-```
-# Отправка изображения
-Invoke-WebRequest -Uri http://127.0.0.1:8000/api/predict -Method Post -InFile path\to\car.jpg -ContentType 'application/octet-stream'
+```powershell
+Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8088/api/metadata | Select-Object -ExpandProperty Content
 ```
 
-## Метрики
-- На валидации считаются accuracy, precision, recall, f1 для каждой головы, а также среднее.
+- Предсказание (классификация бинарная):
 
-### Оценка и матрицы ошибок
-```
-python scripts/evaluate.py --val-csv data/splits/val.csv --ckpt checkpoints/resnet18_multitask.pt --out-dir eval
-```
-Сохранит `eval/cm_clean.png` и `eval/cm_damaged.png`.
-
-Пример результатов (на синтетике): Macro F1 ≈ 1.0
-
-![Confusion Matrix Clean](eval/cm_clean.png)
-
-![Confusion Matrix Damaged](eval/cm_damaged.png)
-
-Дополнительно сохраняются ROC/PR кривые:
-
-![ROC Clean](eval/clean_roc.png)
-![PR Clean](eval/clean_pr.png)
-![ROC Damaged](eval/damaged_roc.png)
-![PR Damaged](eval/damaged_pr.png)
-
-## Ограничения и этика
-- Конфиденциальность: избегайте распознаваемых лиц/номеров; храните данные безопасно.
-- Bias: разные камеры/условия освещения могут влиять; используйте аугментации и баланс классов.
-- Не используйте модель вне домена данных без дополнительной адаптации.
-
-## План улучшений
-- Больше данных и таргетированные аугментации (снег/дождь/пыль)
-- Многоклассовая градация грязи/повреждений
-- Детекция/сегментация для локализации повреждений
-- Калибровка вероятностей и активное обучение
-
-## Конвертер Roboflow → labels.csv
-Ожидаем структуру папок: `root/clean`, `root/dirty`, `root/damaged`, `root/intact`.
-```
-python scripts/roboflow_to_labels.py --root path/to/root --out data/labels.csv
-python scripts/prepare_split.py --labels data/labels.csv --val-size 0.2
+```powershell
+Invoke-WebRequest -Uri http://127.0.0.1:8088/api/predict -Method Post -InFile path\to\car.jpg -ContentType 'application/octet-stream' | Select-Object -ExpandProperty Content
 ```
 
-## Batch-инференс на папке
-```
-python scripts/batch_predict.py --ckpt checkpoints/resnet18_multitask.pt --folder path/to/folder --out predictions.csv
+- Детекция (YOLO), параметр `conf` регулирует уверенность (0.01–0.5):
+
+```powershell
+$img='path\to\car.jpg'
+Invoke-WebRequest -Uri "http://127.0.0.1:8088/api/detect?conf=0.05" -Method Post -InFile $img -ContentType 'application/octet-stream' | Select-Object -ExpandProperty Content
 ```
 
-## Docker
-Собрать образ и запустить сайт:
-```
-docker build -t car-condition .
-docker run --rm -p 8000:8000 -e CKPT=checkpoints/resnet18_multitask.pt car-condition
+## Где взять веса
+- В репозитории уже есть обученные веса YOLO (папка `yolov8_runs/*/weights/best.pt`). Этого достаточно для запуска.
+- Для дообучения/переобучения скачайте датасеты на Roboflow:
+  - Rust and Scrach.v1i.yolov8
+  - Car Scratch and Dent.v1i.yolov8
+  Сохраните в корень проекта одноимёнными папками (как в названии).
+
+## Обучение YOLO (опционально)
+Запустить обучение на CPU (для быстрого прогресса, рекомендуется больше эпох и GPU при наличии):
+
+```powershell
+Set-Location .\car_condition
+$env:ULTRALYTICS_SETTINGS = "$((Get-Location).Path)\ultralytics_settings.yaml"
+.\.venv\Scripts\python.exe -m scripts.train_yolo --data-yaml 'Car Scratch and Dent.v1i.yolov8/data.yaml' --model yolov8n.pt --imgsz 640 --epochs 10 --batch 4 --device cpu
 ```
 
-## CI
-Добавлен GitHub Actions `ci.yml`: установка зависимостей, синтетический датасет, обучение 1 эпоху, предсказание одного изображения.
+Или напрямую через ultralytics:
 
-## Экспорт модели (ONNX / TorchScript)
+```powershell
+.\.venv\Scripts\python.exe -c "from ultralytics import YOLO; m=YOLO('yolov8n.pt'); m.train(data='Rust and Scrach.v1i.yolov8/data.yaml', imgsz=640, epochs=10, batch=4, device='cpu', project='yolov8_runs', name='rust_scratch', pretrained=True, exist_ok=True)"
 ```
-python -m scripts.export_model --ckpt checkpoints/resnet18_multitask.pt --out-dir checkpoints/export --opset 12
-```
-Получите `checkpoints/export/model_ts.pt` (TorchScript) и `checkpoints/export/model.onnx`. Если установлен onnxruntime, будет выполнена минимальная проверка инференса.
 
-## Smoke E2E (данные → train → predict)
-```
-python -m scripts.smoke_e2e
-```
-Скрипт генерирует синтетику, делит на сплиты, обучает 1 эпоху и делает предсказание для одного изображения.
+## Полезные параметры
+- `run_web.ps1`:
+  - `-Ckpt` — путь к чекпойнту классификатора (`checkpoints/resnet18_multitask.pt`)
+  - `-BindHost` — адрес бинда (по умолчанию `127.0.0.1`)
+  - `-Port` — порт (например `8088`)
+  - `-Backbone` — `auto` (определится по чекпойнту) или явный resnet18/resnet34
+  - `-YoloWeights` — один или несколько путей через запятую к *.pt
 
-## Grad-CAM визуализация
-```
-python -m scripts.grad_cam --ckpt checkpoints/resnet18_multitask.pt --image path/to/car.jpg --out eval/gradcam.png --head damaged
-```
-Сохраняет тепловую карту важности признаков поверх изображения.
+- Эндпоинты FastAPI:
+  - `/` — статическая страница с UI
+  - `/api/metadata` — информация о загруженных моделях
+  - `/api/predict` — бинарная классификация (чистый/грязный, целый/повреждённый)
+  - `/api/detect?conf=...` — детекция YOLO, `conf` от 0.01 до 0.5
+  - `/api/heatmap` и `/api/heatmap_boxes` — тепловые карты/боксы для UI
 
-## Быстрый запуск (PowerShell)
+## Замечания
+- Если после изменения кода сервер не стартует, убедитесь, что активирован venv и зависимости установлены без ошибок.
+- На CPU инференс работает, но может быть медленнее, чем на GPU.
+- В продакшн-режиме используйте отдельный процесс-менеджер и фиксированные версии зависимостей.
+
+## Структура проекта (сжатая)
 ```
-./run_gradio.ps1 -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 7860
-./run_web.ps1    -Ckpt checkpoints/resnet18_multitask.pt -BindHost 127.0.0.1 -Port 8000
+car_condition/
+  src/web/main.py           # FastAPI приложение + YOLO и Grad-CAM
+  src/web/static/index.html # Веб-UI с отрисовкой боксов и теплокарт
+  run_web.ps1               # Скрипт запуска веба на Windows
+  yolov8_runs/*/weights/    # Готовые веса YOLO (best.pt, last.pt)
+  checkpoints/*.pt          # Классификатор (мультитаск)
+  requirements.txt          # Зависимости
 ```
+
+## Лицензии и данные
+Соблюдайте лицензии используемых датасетов и библиотек. Удаляйте персональные данные на изображениях (номера/лица) или используйте размытие.
