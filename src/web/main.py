@@ -32,6 +32,7 @@ def make_app(
     device: str = 'cpu',
     backbone: str = 'resnet18',
     yolo_weights: Optional[str] = None,
+    yolo_imgsz: Optional[int] = None,
     thr_clean_override: Optional[float] = None,
     thr_damaged_override: Optional[float] = None,
     invert_clean: bool = False,
@@ -462,8 +463,20 @@ def make_app(
     async def heatmap_boxes_slash(head: str = 'dirty', file: UploadFile = File(...), thr: float = 0.6, min_area_ratio: float = 0.002):
         return await heatmap_boxes(head=head, file=file, thr=thr, min_area_ratio=min_area_ratio)
 
+    def _min_score_for_label(lbl: Optional[str], base_conf: float) -> float:
+        l = (lbl or '').lower()
+        # Перекрываем base_conf для некоторых классов
+        mapping = {
+            'ржавчина': 0.03,
+            'царапина': 0.05,
+            'вмятина': 0.05,
+            'грязь': 0.08,
+            'авто': 0.15,
+        }
+        return float(min(base_conf, mapping.get(l, base_conf)))
+
     @app.post('/api/detect')
-    async def detect(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45):
+    async def detect(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45, imgsz: Optional[int] = None):
         if not yolo_models:
             raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь(и) к YOLO весам при запуске.')
         data = await file.read()
@@ -497,9 +510,13 @@ def make_app(
             except Exception:
                 continue
 
-        def _run_yolo(mdl, image, conf_val: float):
+        def _run_yolo(mdl, image, conf_val: float, imgsz_override: Optional[int] = None):
             try:
-                return mdl.predict(image, conf=conf_val, iou=iou, verbose=False, augment=True)
+                kw = dict(conf=conf_val, iou=iou, verbose=False, augment=True)
+                use_sz = imgsz_override if imgsz_override is not None else yolo_imgsz
+                if isinstance(use_sz, int) and use_sz > 0:
+                    kw['imgsz'] = int(use_sz)
+                return mdl.predict(image, **kw)
             except Exception:
                 return None
 
@@ -509,7 +526,7 @@ def make_app(
         car_boxes: list[tuple[list[float], float]] = []  # ([x1,y1,x2,y2], score)
         if car_model is not None:
             conf_car = max(0.15, float(conf))
-            res = _run_yolo(car_model, img, conf_car)
+            res = _run_yolo(car_model, img, conf_car, imgsz)
             if res:
                 r = res[0]
                 boxes = getattr(r, 'boxes', None)
@@ -525,7 +542,7 @@ def make_app(
                             car_boxes.append(([float(v) for v in xyxy], score))
             # если машин нет — пробуем пониже порог
             if not car_boxes and conf_car > 0.05:
-                res = _run_yolo(car_model, img, 0.05)
+                res = _run_yolo(car_model, img, 0.05, imgsz)
                 if res:
                     r = res[0]
                     boxes = getattr(r, 'boxes', None)
@@ -547,12 +564,13 @@ def make_app(
         if car_boxes:
             # добавим боксы машины тоже в выдачу
             for (cb, sc) in car_boxes:
-                dets.append({'box': cb, 'class_id': -1, 'class': 'авто', 'score': float(sc)})
+                if float(sc) >= _min_score_for_label('авто', conf):
+                    dets.append({'box': cb, 'class_id': -1, 'class': 'авто', 'score': float(sc)})
             H, W = img_np.shape[:2]
             for (cb, _) in car_boxes:
                 x1, y1, x2, y2 = [int(v) for v in cb]
-                # паддинг 5% от размера бокса
-                pad = int(0.05 * max(x2 - x1, y2 - y1))
+                # паддинг ~7% от размера бокса
+                pad = int(0.07 * max(x2 - x1, y2 - y1))
                 xx1 = _clip(x1 - pad, 0, W - 1)
                 yy1 = _clip(y1 - pad, 0, H - 1)
                 xx2 = _clip(x2 + pad, 0, W - 1)
@@ -565,11 +583,11 @@ def make_app(
                 roi_dets: list[dict] = []
                 # запускаем все модели и собираем дефекты, исключая класс авто
                 for m in yolo_models:
-                    res = _run_yolo(m, crop_img, float(conf))
+                    res = _run_yolo(m, crop_img, float(conf), imgsz)
                     if not res:
                         # пробуем понизить конф, если пусто
                         if conf > 0.02:
-                            res = _run_yolo(m, crop_img, 0.02)
+                            res = _run_yolo(m, crop_img, 0.02, imgsz)
                     if not res:
                         continue
                     r = res[0]
@@ -589,14 +607,15 @@ def make_app(
                             gx2 = float(xyxy[2]) + xx1
                             gy2 = float(xyxy[3]) + yy1
                             score = float(b.conf.item())
-                            roi_dets.append({'box': [gx1, gy1, gx2, gy2], 'class_id': cls_id, 'class': friendly, 'score': score})
+                            if score >= _min_score_for_label(friendly, conf):
+                                roi_dets.append({'box': [gx1, gy1, gx2, gy2], 'class_id': cls_id, 'class': friendly, 'score': score})
 
                 # Доп. попытка найти ржавчину: низкий conf только для ржавчины
                 def _is_rust_label(lbl: Optional[str]) -> bool:
                     return (_friendly_class(lbl) == 'ржавчина') if lbl else False
                 if not any((d.get('class') == 'ржавчина') for d in roi_dets):
                     for m in yolo_models:
-                        res = _run_yolo(m, crop_img, 0.01)
+                        res = _run_yolo(m, crop_img, 0.01, imgsz)
                         if not res:
                             continue
                         r = res[0]
@@ -614,7 +633,8 @@ def make_app(
                                     gx2 = float(xyxy[2]) + xx1
                                     gy2 = float(xyxy[3]) + yy1
                                     score = float(b.conf.item())
-                                    roi_dets.append({'box': [gx1, gy1, gx2, gy2], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
+                                    if score >= _min_score_for_label('ржавчина', conf):
+                                        roi_dets.append({'box': [gx1, gy1, gx2, gy2], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
                 # Цветовой фолбэк по ржавчине в ROI
                 if not any((d.get('class') == 'ржавчина') for d in roi_dets):
                     rust_boxes = _rust_color_boxes(crop_np)
@@ -630,7 +650,7 @@ def make_app(
             # fallback: глобальная детекция (как раньше)
             for m in yolo_models:
                 dets_m: list[dict] = []
-                res = _run_yolo(m, img, float(conf))
+                res = _run_yolo(m, img, float(conf), imgsz)
                 if res:
                     r = res[0]
                     boxes = getattr(r, 'boxes', None)
@@ -643,7 +663,7 @@ def make_app(
                             raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
                             dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
                 if not dets_m and (conf is None or conf > 0.02):
-                    res = _run_yolo(m, img, 0.02)
+                    res = _run_yolo(m, img, 0.02, imgsz)
                     if res:
                         r = res[0]
                         boxes = getattr(r, 'boxes', None)
@@ -654,7 +674,9 @@ def make_app(
                                 cls_id = int(b.cls.item())
                                 score = float(b.conf.item())
                                 raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
-                                dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+                                friendly = _friendly_class(raw_name)
+                                if score >= _min_score_for_label(friendly, conf):
+                                    dets_m.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': friendly, 'score': score})
                 dets.extend(dets_m)
 
             # добивка ржавчины глобально
@@ -662,7 +684,7 @@ def make_app(
                 return (_friendly_class(lbl) == 'ржавчина') if lbl else False
             if not any((d.get('class') == 'ржавчина') for d in dets):
                 for m in yolo_models:
-                    res = _run_yolo(m, img, 0.01)
+                    res = _run_yolo(m, img, 0.01, imgsz)
                     if res:
                         r = res[0]
                         boxes = getattr(r, 'boxes', None)
@@ -675,7 +697,8 @@ def make_app(
                                 if _is_rust_label(raw_name):
                                     xyxy = b.xyxy[0].tolist()
                                     score = float(b.conf.item())
-                                    dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
+                                    if score >= _min_score_for_label('ржавчина', conf):
+                                        dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': 'ржавчина', 'score': score})
             if not any((d.get('class') == 'ржавчина') for d in dets):
                 rust_boxes = _rust_color_boxes(img_np)
                 for b in rust_boxes:
@@ -726,14 +749,18 @@ def make_app(
         return await detect(file=file, conf=conf, iou=iou)
 
     @app.post('/api/detect_image')
-    async def detect_image(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45):
+    async def detect_image(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45, imgsz: Optional[int] = None):
         if not yolo_models:
             raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь(и) к YOLO весам при запуске.')
         data = await file.read()
         img = Image.open(io.BytesIO(data)).convert('RGB')
         # For visualization use the first model
         m0 = yolo_models[0]
-        results = m0.predict(img, conf=conf, iou=iou, verbose=False, augment=True)
+        kw = dict(conf=conf, iou=iou, verbose=False, augment=True)
+        use_sz = imgsz if imgsz is not None else yolo_imgsz
+        if isinstance(use_sz, int) and use_sz > 0:
+            kw['imgsz'] = int(use_sz)
+        results = m0.predict(img, **kw)
         if not results:
             raise HTTPException(status_code=500, detail='YOLO inference failed')
         r = results[0]

@@ -1,0 +1,92 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "train: rust_scratch GPU",
+			"type": "shell",
+			"command": ".\\.venv-gpu\\Scripts\\python.exe",
+			"args": [
+				"scripts/train_gpu.py",
+				"--weights",
+				"yolov8_runs/rust_scratch_s960_e140_v3/weights/best.pt",
+				"--data",
+				"Rust and Scrach.v1i.yolov8/data.yaml",
+				"--project",
+				"yolov8_runs",
+				"--name",
+				"rust_scratch_s960_e30_gpu_v2",
+				"--imgsz",
+				"960",
+				"--epochs",
+				"30",
+				"--batch",
+				"2",
+				"--device",
+				"0",
+				"--workers",
+				"2"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$eslint - stylish"
+			],
+			"group": "build"
+		},
+		{
+			"label": "train: rust_scratch GPU",
+			"type": "shell",
+			"command": ".\\.venv-gpu\\Scripts\\python.exe",
+			"args": [
+				"scripts/train_gpu.py",
+				"--weights",
+				"yolov8_runs/rust_scratch_s960_e140_v3/weights/best.pt",
+				"--data",
+				"Rust and Scrach.v1i.yolov8/data.yaml",
+				"--project",
+				"yolov8_runs",
+				"--name",
+				"rust_scratch_s960_e30_gpu_v2",
+				"--imgsz",
+				"960",
+				"--epochs",
+				"30",
+				"--batch",
+				"2",
+				"--device",
+				"0",
+				"--workers",
+				"2"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "train: dent_only GPU",
+			"type": "shell",
+			"command": ".\\.venv-gpu\\Scripts\\python.exe",
+			"args": [
+				"scripts/train_gpu.py",
+				"--weights",
+				"yolov8_runs/car_dent_only_s960_e60/weights/best.pt",
+				"--data",
+				"Car_Dent_Only.v1i.yolov8/data.yaml",
+				"--project",
+				"yolov8_runs",
+				"--name",
+				"car_dent_only_s960_e30_gpu_v2",
+				"--imgsz",
+				"960",
+				"--epochs",
+				"30",
+				"--batch",
+				"2",
+				"--device",
+				"0",
+				"--workers",
+				"2"
+			],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

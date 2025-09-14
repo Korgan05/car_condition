@@ -1,0 +1,8 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+nc: 1
+names:
+- dent
+source: C:\Users\Korgan\хакатон\car_condition\Car Scratch and Dent.v1i.yolov8
+note: Generated single-class dataset for 'dent'

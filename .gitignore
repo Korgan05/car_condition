@@ -16,6 +16,7 @@ predictions.csv
 *.log
 .env
 .venv
+.venv-gpu/
 logs/
 wandb/
 .DS_Store
@@ -23,6 +24,9 @@ Thumbs.db
 # Roboflow dataset dumps and YOLO runs
 Rust and Scrach.v1i.yolov8/
 Car Scratch and Dent.v1i.yolov8/
+Car_Dent_Only.v1i.yolov8/
+"Car Dent Only.v1i.yolov8"/
 yolov8_runs/
+YOLOv8/
 # Local server artifacts
 uvicorn.log
