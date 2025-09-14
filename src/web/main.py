@@ -1,5 +1,6 @@
 import io
 import os
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -80,23 +81,87 @@ def make_app(
         with open(os.path.join(static_dir, 'index.html'), 'r', encoding='utf-8') as f:
             return f.read()
 
+    # Serve favicon to avoid 404 in logs
+    @app.get('/favicon.ico')
+    def favicon():
+        path = os.path.join(static_dir, 'favicon.svg')
+        if not os.path.exists(path):
+            raise HTTPException(status_code=404, detail='favicon not found')
+        from fastapi.responses import FileResponse
+        return FileResponse(path, media_type='image/svg+xml')
+
     @app.get('/health')
     def health():
         return {'status': 'ok', 'image_size': image_size, 'device': device}
 
-    # Optional YOLO detector
-    yolo_model = None
-    yolo_classes = None
-    if yolo_weights and os.path.exists(yolo_weights):
+    # Optional YOLO detector(s)
+    yolo_models: list = []
+    yolo_classes_list: list[list[str]] | None = []
+    yolo_weights_list: list[str] = []
+    yolo_candidates_tried: list[str] = []
+    yolo_error: Optional[str] = None
+    # Prepare candidate weights: CLI param or auto-discovery
+    def _discover_yolo_candidates() -> list[str]:
+        cands: list[str] = []
+        # explicit arg(s)
+        if yolo_weights:
+            cands.extend([w.strip() for w in re.split(r'[;,]', yolo_weights) if w.strip()])
+        # auto-discover common locations
+        root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        # yolov8_runs/*/weights/{best,last}.pt
         try:
-            from ultralytics import YOLO  # type: ignore
-            yolo_model = YOLO(yolo_weights)
-            # names: dict[int,str]
-            yolo_classes = [yolo_model.model.names[i] for i in range(len(yolo_model.model.names))]
+            runs_dir = os.path.join(root, 'yolov8_runs')
+            if os.path.isdir(runs_dir):
+                for sub in os.listdir(runs_dir):
+                    wdir = os.path.join(runs_dir, sub, 'weights')
+                    for fn in ('best.pt', 'last.pt'):
+                        p = os.path.join(wdir, fn)
+                        if os.path.exists(p):
+                            cands.append(p)
+        except Exception:
+            pass
+        # repo root yolov8n.pt as a fallback
+        fallback_pt = os.path.join(root, 'yolov8n.pt')
+        if os.path.exists(fallback_pt):
+            cands.append(fallback_pt)
+        # de-duplicate preserving order
+        out: list[str] = []
+        seen = set()
+        for p in cands:
+            if p not in seen:
+                out.append(p); seen.add(p)
+        return out
+
+    try:
+        from ultralytics import YOLO  # type: ignore
+    except Exception as e:
+        print('[WARN] ultralytics import failed:', e)
+        YOLO = None  # type: ignore
+        yolo_error = f'ultralytics import failed: {e}'
+
+    weights_candidates = _discover_yolo_candidates()
+    for w in weights_candidates:
+        yolo_candidates_tried.append(w)
+        if not os.path.exists(w):
+            print(f"[WARN] YOLO weights not found: {w}")
+            continue
+        if 'YOLO' not in globals() or YOLO is None:  # type: ignore
+            break
+        try:
+            m = YOLO(w)  # type: ignore
+            yolo_models.append(m)
+            yolo_weights_list.append(w)
+            try:
+                cls_names = [m.model.names[i] for i in range(len(m.model.names))]
+            except Exception:
+                cls_names = []
+            if yolo_classes_list is not None:
+                yolo_classes_list.append(cls_names)
         except Exception as e:
-            print('[WARN] YOLO load failed:', e)
-            yolo_model = None
-            yolo_classes = None
+            print('[WARN] YOLO load failed for', w, e)
+            yolo_error = f'load failed for {os.path.basename(w)}: {e}'
+    if not yolo_models:
+        yolo_classes_list = None
 
     def _friendly_class(name: Optional[str]) -> Optional[str]:
         if name is None:
@@ -105,8 +170,10 @@ def make_app(
         mapping = {
             'scracth': 'царапина',
             'scratch': 'царапина',
+            'scratches': 'царапина',
             'dunt': 'вмятина',
             'dent': 'вмятина',
+            'dirt': 'грязь',
             'rust': 'ржавчина',
             'car': 'авто',
         }
@@ -114,13 +181,42 @@ def make_app(
 
     @app.get('/api/metadata')
     def metadata():
-        return {
+        # friendly classes union
+        classes_out = None
+        if yolo_classes_list:
+            try:
+                s = set()
+                for lst in yolo_classes_list:
+                    for n in lst:
+                        fn = _friendly_class(n)
+                        if fn:
+                            s.add(fn)
+                classes_out = sorted(s)
+            except Exception:
+                classes_out = None
+        # prepare weights label (string for UI)
+        yolo_weights_label = None
+        if yolo_weights_list:
+            if len(yolo_weights_list) == 1:
+                yolo_weights_label = os.path.basename(yolo_weights_list[0])
+            else:
+                yolo_weights_label = ', '.join(os.path.basename(w) for w in yolo_weights_list)
+        meta = {
             'backbone': backbone,
             'thresholds': {'clean': thr_c, 'damaged': thr_d},
-            'yolo_loaded': bool(yolo_model is not None),
-            'yolo_classes': yolo_classes,
-            'yolo_weights': os.path.basename(yolo_weights) if yolo_weights else None,
+            'yolo_loaded': bool(len(yolo_models) > 0),
+            'yolo_classes': classes_out,
+            'yolo_weights': yolo_weights_label,
         }
+        # provide diagnostics if YOLO not loaded
+        if not meta['yolo_loaded']:
+            meta['yolo_candidates'] = [
+                os.path.relpath(p, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+                if os.path.isabs(p) else p for p in (yolo_candidates_tried or [])
+            ]
+            if yolo_error:
+                meta['yolo_error'] = yolo_error
+        return meta
 
     # Allow trailing slashes for endpoints (avoids 404 when client posts to /api/.../)
     @app.get('/api/metadata/', include_in_schema=False)
@@ -189,6 +285,25 @@ def make_app(
         heat = cv2.cvtColor(heat, cv2.COLOR_BGR2RGB)
         out = (0.45 * heat + 0.55 * img_np).astype(np.uint8)
         return out
+
+    def _cam_to_boxes(cam: np.ndarray, w: int, h: int, thr: float = 0.6, min_area_ratio: float = 0.002):
+        cam_resized = cv2.resize(cam, (w, h))
+        mask = (cam_resized >= thr).astype(np.uint8) * 255
+        # морфология для сглаживания шума
+        try:
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+            mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
+        except Exception:
+            pass
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        boxes = []
+        min_area = int(min_area_ratio * w * h)
+        for c in cnts:
+            x, y, bw, bh = cv2.boundingRect(c)
+            if bw * bh < min_area:
+                continue
+            boxes.append([int(x), int(y), int(x + bw), int(y + bh)])
+        return boxes
 
     @app.post('/api/predict')
     async def predict(file: UploadFile = File(...)):
@@ -280,63 +395,129 @@ def make_app(
     async def heatmap_slash(head: str = 'damaged', file: UploadFile = File(...)):
         return await heatmap(head=head, file=file)
 
-    @app.post('/api/detect')
-    async def detect(file: UploadFile = File(...), conf: float = 0.10, iou: float = 0.45):
-        if yolo_model is None:
-            raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь к YOLO весам при запуске.')
+    @app.post('/api/heatmap_boxes')
+    async def heatmap_boxes(head: str = 'dirty', file: UploadFile = File(...), thr: float = 0.6, min_area_ratio: float = 0.002):
+        if file.content_type not in {'image/jpeg', 'image/png', 'image/bmp'}:
+            raise HTTPException(status_code=400, detail='Неподдерживаемый тип файла (разрешены JPEG/PNG/BMP)')
         data = await file.read()
         img = Image.open(io.BytesIO(data)).convert('RGB')
-        # Run inference
-        results = yolo_model.predict(img, conf=conf, iou=iou, verbose=False)
-        dets = []
-        if results:
-            r = results[0]
-            boxes = r.boxes
-            for i in range(len(boxes)):
-                b = boxes[i]
-                xyxy = b.xyxy[0].tolist()
-                cls_id = int(b.cls.item())
-                score = float(b.conf.item())
-                raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
-                dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
-        # retry with lower conf if empty
-        if not dets and (conf is None or conf > 0.06):
-            results = yolo_model.predict(img, conf=0.05, iou=iou, verbose=False)
+        w, h = img.size
+        x = t(img).unsqueeze(0).to(device)
+        if head == 'dirty':
+            cam = _compute_cam(x, 'clean')
+            cam = 1.0 - cam
+        else:
+            cam = _compute_cam(x, 'damaged')
+        boxes = _cam_to_boxes(cam, w, h, float(thr), float(min_area_ratio))
+        label = 'грязь' if head == 'dirty' else 'повреждение'
+        return JSONResponse({'head': head, 'boxes': boxes, 'label': label})
+    @app.post('/api/heatmap_boxes/', include_in_schema=False)
+    async def heatmap_boxes_slash(head: str = 'dirty', file: UploadFile = File(...), thr: float = 0.6, min_area_ratio: float = 0.002):
+        return await heatmap_boxes(head=head, file=file, thr=thr, min_area_ratio=min_area_ratio)
+
+    @app.post('/api/detect')
+    async def detect(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45):
+        if not yolo_models:
+            raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь(и) к YOLO весам при запуске.')
+        data = await file.read()
+        img = Image.open(io.BytesIO(data)).convert('RGB')
+
+        dets: list[dict] = []
+        # run all models and merge detections
+        for m in yolo_models:
+            try:
+                results = m.predict(img, conf=conf, iou=iou, verbose=False)
+            except Exception:
+                results = None
             if results:
                 r = results[0]
-                boxes = r.boxes
-                for i in range(len(boxes)):
-                    b = boxes[i]
-                    xyxy = b.xyxy[0].tolist()
-                    cls_id = int(b.cls.item())
-                    score = float(b.conf.item())
-                    raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
-                    dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
-        # also return friendly classes
+                boxes = getattr(r, 'boxes', None)
+                if boxes is not None:
+                    for i in range(len(boxes)):
+                        b = boxes[i]
+                        xyxy = b.xyxy[0].tolist()
+                        cls_id = int(b.cls.item())
+                        score = float(b.conf.item())
+                        raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
+                        dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+            # retry with lower conf if empty
+            if not dets and (conf is None or conf > 0.035):
+                try:
+                    results = m.predict(img, conf=0.03, iou=iou, verbose=False)
+                except Exception:
+                    results = None
+                if results:
+                    r = results[0]
+                    boxes = getattr(r, 'boxes', None)
+                    if boxes is not None:
+                        for i in range(len(boxes)):
+                            b = boxes[i]
+                            xyxy = b.xyxy[0].tolist()
+                            cls_id = int(b.cls.item())
+                            score = float(b.conf.item())
+                            raw_name = r.names.get(cls_id) if hasattr(r, 'names') and isinstance(r.names, dict) else None
+                            dets.append({'box': [float(v) for v in xyxy], 'class_id': cls_id, 'class': _friendly_class(raw_name), 'score': score})
+
+        # simple per-class NMS to reduce duplicates across models
+        def iou(a, b):
+            ax1, ay1, ax2, ay2 = a
+            bx1, by1, bx2, by2 = b
+            ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+            ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+            iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+            inter = iw * ih
+            area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+            area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+            union = area_a + area_b - inter + 1e-6
+            return inter / union
+        nms_out: list[dict] = []
+        by_cls: dict[str, list[dict]] = {}
+        for d in dets:
+            c = (d.get('class') or '').lower()
+            by_cls.setdefault(c, []).append(d)
+        for c, arr in by_cls.items():
+            arr.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+            kept: list[dict] = []
+            for d in arr:
+                db = d['box']
+                if all((iou(db, k['box']) < 0.5) for k in kept):
+                    kept.append(d)
+            nms_out.extend(kept)
+
+        # also return combined friendly classes
         classes_out = None
         try:
-            classes_out = [_friendly_class(yolo_model.model.names[i]) for i in range(len(yolo_model.model.names))]
+            s = set()
+            for m in yolo_models:
+                names = getattr(m.model, 'names', {})
+                for i in range(len(names)):
+                    fn = _friendly_class(names[i])
+                    if fn:
+                        s.add(fn)
+            classes_out = sorted(s)
         except Exception:
-            classes_out = yolo_classes
-        return JSONResponse({'detections': dets, 'classes': classes_out})
+            classes_out = None
+        return JSONResponse({'detections': nms_out, 'classes': classes_out})
     @app.post('/api/detect/', include_in_schema=False)
-    async def detect_slash(file: UploadFile = File(...), conf: float = 0.25, iou: float = 0.45):
+    async def detect_slash(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45):
         return await detect(file=file, conf=conf, iou=iou)
 
     @app.post('/api/detect_image')
-    async def detect_image(file: UploadFile = File(...), conf: float = 0.10, iou: float = 0.45):
-        if yolo_model is None:
-            raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь к YOLO весам при запуске.')
+    async def detect_image(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45):
+        if not yolo_models:
+            raise HTTPException(status_code=503, detail='Детектор не загружен. Передайте путь(и) к YOLO весам при запуске.')
         data = await file.read()
         img = Image.open(io.BytesIO(data)).convert('RGB')
-        results = yolo_model.predict(img, conf=conf, iou=iou, verbose=False)
+        # For visualization use the first model
+        m0 = yolo_models[0]
+        results = m0.predict(img, conf=conf, iou=iou, verbose=False)
         if not results:
             raise HTTPException(status_code=500, detail='YOLO inference failed')
         r = results[0]
         # if no boxes, retry with lower conf
         try:
-            if r.boxes is not None and len(r.boxes) == 0 and (conf is None or conf > 0.06):
-                results = yolo_model.predict(img, conf=0.05, iou=iou, verbose=False)
+            if r.boxes is not None and len(r.boxes) == 0 and (conf is None or conf > 0.035):
+                results = m0.predict(img, conf=0.03, iou=iou, verbose=False)
                 r = results[0]
         except Exception:
             pass
@@ -358,7 +539,7 @@ def make_app(
         from fastapi.responses import Response
         return Response(content=buf.read(), media_type='image/png')
     @app.post('/api/detect_image/', include_in_schema=False)
-    async def detect_image_slash(file: UploadFile = File(...), conf: float = 0.25, iou: float = 0.45):
+    async def detect_image_slash(file: UploadFile = File(...), conf: float = 0.05, iou: float = 0.45):
         return await detect_image(file=file, conf=conf, iou=iou)
 
     return app
