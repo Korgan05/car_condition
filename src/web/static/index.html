@@ -36,22 +36,13 @@
   <button id="sendBtn">Отправить</button>
         <div style="height: 12px;"></div>
         <label style="display:inline-flex; gap:8px; align-items:center;">
-          <input id="showCam" type="checkbox" /> Показать тепловую карту повреждений (экспериментально)
+          <input id="showCam" type="checkbox" /> Показать тепловые карты на фото (грязь и повреждения)
         </label>
         <div style="height: 12px;"></div>
         <label style="display:inline-flex; gap:8px; align-items:center;">
           <input id="showDet" type="checkbox" /> Детекция повреждений (YOLO) — отрисовать боксы
         </label>
         <div style="height: 12px;"></div>
-        <details>
-          <summary style="cursor:pointer;color:#a8b0d8">Ручные пороги (необязательно)</summary>
-          <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-top:8px;">
-            <label>Порог чистоты: <input id="thrClean" type="range" min="0" max="1" step="0.01" value="0.50"/> <span id="thrCleanVal">0.50</span></label>
-            <label>Порог повреждений: <input id="thrDamaged" type="range" min="0" max="1" step="0.01" value="0.50"/> <span id="thrDamagedVal">0.50</span></label>
-            <label><input id="invClean" type="checkbox"/> Инвертировать чистоту</label>
-            <label><input id="invDamaged" type="checkbox"/> Инвертировать повреждения</label>
-          </div>
-        </details>
       </div>
       <div class="card">
   <h1>Результаты</h1>
@@ -71,22 +62,10 @@
   const meta = document.getElementById('meta');
   const showCam = document.getElementById('showCam');
   const showDet = document.getElementById('showDet');
-  const thrClean = document.getElementById('thrClean');
-  const thrDamaged = document.getElementById('thrDamaged');
-  const thrCleanVal = document.getElementById('thrCleanVal');
-  const thrDamagedVal = document.getElementById('thrDamagedVal');
-  const invClean = document.getElementById('invClean');
-  const invDamaged = document.getElementById('invDamaged');
     // load metadata
     fetch('/api/metadata').then(r=>r.json()).then(m=>{
-      const tC = m.thresholds?.clean ?? 0.5;
-      const tD = m.thresholds?.damaged ?? 0.5;
-      thrClean.value = tC; thrCleanVal.textContent = (+tC).toFixed(2);
-      thrDamaged.value = tD; thrDamagedVal.textContent = (+tD).toFixed(2);
-      meta.textContent = `модель: ${m.backbone} | порог чистоты: ${(+tC).toFixed(2)} | порог повреждений: ${(+tD).toFixed(2)}`;
+      meta.textContent = `модель: ${m.backbone}`;
     }).catch(()=>{});
-    thrClean.addEventListener('input', ()=> thrCleanVal.textContent = (+thrClean.value).toFixed(2));
-    thrDamaged.addEventListener('input', ()=> thrDamagedVal.textContent = (+thrDamaged.value).toFixed(2));
     // убрали тех. JSON — оставляем только человеко-понятные подписи
 
     input.addEventListener('change', () => {
@@ -127,16 +106,9 @@
               return;
             }
 
-            // Базируемся на решениях сервера (его пороги из чекпойнта)
+            // Используем решения сервера (автопороги из чекпойнта)
             let cleanLabel = item.pred_clean_ru || (item.pred_clean === 'clean' ? 'чистый' : 'грязный');
             let damageLabel = item.pred_damage_ru || (item.pred_damage === 'damaged' ? 'битый' : 'целый');
-            // Если открыты ручные пороги — пересчитываем локально
-            if (document.querySelector('details')?.open) {
-              const pc = invClean.checked ? 1 - item.clean_prob : item.clean_prob;
-              const pd = invDamaged.checked ? 1 - item.damaged_prob : item.damaged_prob;
-              cleanLabel = pc >= +thrClean.value ? 'чистый' : 'грязный';
-              damageLabel = pd >= +thrDamaged.value ? 'битый' : 'целый';
-            }
 
             const title = document.createElement('div');
             title.className = 'file';
@@ -161,28 +133,31 @@
           });
         }
 
-        // Grad-CAM (повреждения) по желанию
-  if (showCam.checked) {
-          // Очистим прошлые теплокарты
+        // Grad-CAM: строим две карты (грязь и повреждения)
+        if (showCam.checked) {
+          // Очистим прошлые карты
           [...preview.querySelectorAll('img.cam')].forEach(n => n.remove());
           for (let i = 0; i < Math.min(input.files.length, 6); i++) {
             const f = input.files[i];
-            const fd2 = new FormData();
-            fd2.append('file', f);
-            try {
-              const r2 = await fetch('/api/heatmap?head=damaged', { method: 'POST', body: fd2 });
-              if (!r2.ok) throw new Error(await r2.text());
-              const blob = await r2.blob();
-              const url = URL.createObjectURL(blob);
-              const img = document.createElement('img');
-              img.className = 'cam';
-              img.style.maxWidth = '100%';
-              img.style.borderRadius = '8px';
-              img.style.margin = '4px 0 12px 0';
-              img.src = url;
-              preview.appendChild(img);
-            } catch (e) {
-              console.warn('CAM error', e);
+            for (const head of ['dirty','damaged']) {
+              const fd2 = new FormData();
+              fd2.append('file', f);
+              try {
+                const r2 = await fetch(`/api/heatmap?head=${head}`, { method: 'POST', body: fd2 });
+                if (!r2.ok) throw new Error(await r2.text());
+                const blob = await r2.blob();
+                const url = URL.createObjectURL(blob);
+                const img = document.createElement('img');
+                img.className = 'cam';
+                img.style.maxWidth = '100%';
+                img.style.borderRadius = '8px';
+                img.style.margin = '4px 0 12px 0';
+                img.alt = head === 'dirty' ? 'Теплокарта грязи' : 'Теплокарта повреждений';
+                img.src = url;
+                preview.appendChild(img);
+              } catch (e) {
+                console.warn('CAM error', head, e);
+              }
             }
           }
         }

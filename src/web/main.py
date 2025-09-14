@@ -151,7 +151,12 @@ def make_app(
         model.zero_grad(set_to_none=True)
         with torch.enable_grad():
             lc, ld = model(img_t)
-            logit = lc if head == 'clean' else ld
+            # support head in {'clean','dirty','damaged'}
+            if head == 'damaged':
+                logit = ld
+            else:
+                # for 'clean' or 'dirty' we backprop through 'clean' logit
+                logit = lc
             logit.backward(torch.ones_like(logit))
 
         h1.remove(); h2.remove()
@@ -244,7 +249,12 @@ def make_app(
         img = Image.open(io.BytesIO(data)).convert('RGB')
         img_np = np.array(img)
         x = t(img).unsqueeze(0).to(device)
-        cam = _compute_cam(x, head)
+        # if head == 'dirty' we invert CAM of 'clean' to highlight грязь
+        if head == 'dirty':
+            cam = _compute_cam(x, 'clean')
+            cam = 1.0 - cam
+        else:
+            cam = _compute_cam(x, head)
         vis = _overlay_cam(img_np, cam)
         buf = io.BytesIO()
         Image.fromarray(vis).save(buf, format='PNG')
